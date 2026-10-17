@@ -1,0 +1,22 @@
+# Sekrety i konfiguracja lokalna
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Edytory i system
+.vscode/
+.idea/
+.DS_Store
+
+# Lokalne kopie i eksporty
+*.tar.gz
+*.sqlite3
+*.db
