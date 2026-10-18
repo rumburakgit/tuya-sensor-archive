@@ -31,9 +31,9 @@ PROG_BRAKU_DANYCH_MIN = 10
 PAGE_SIZE = 1000
 
 DEVICES = [
-    ("Czujnik główny", "bfa896516d1a62fa5epwgt"),
-    ("Czujnik okno TV", "bf8619c31ef4b9f86898nr"),
-    ("Czujnik okno Mamy", "bfdd0a716082cc1114qzcp"),
+    ("Czujnik główny", "bfff2b43e5cd3b4a8enrgm"),
+    ("Czujnik 1", "bf4ac560e810e7c0ff1e1h"),
+    ("Czujnik 2", "bff6e8a18f0a5e6663oeoo"),
 ]
 
 HTML = """

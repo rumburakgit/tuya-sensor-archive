@@ -16,4 +16,5 @@ Aktywuj środowisko wirtualne i uruchom aplikację zgodnie
 z instrukcjami projektu.
 
 source .venv/bin/activate
-python3 app.py
+./.venv/bin/python3 app_archive.py
+./.venv/bin/python3 app.py

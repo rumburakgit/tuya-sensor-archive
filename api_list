@@ -1,0 +1,83 @@
+74 API(s) Included
+Service Name	Interface Address	Documents	Operation
+Space Management		View Docs	
+Delete Space	DELETE:/v2.0/cloud/space/{space_id}	API Docs	
+Query Resources in Space	GET:/v2.0/cloud/space/{space_id}/resource	API Docs	
+Create Space	POST:/v2.0/cloud/space/creation	API Docs	
+Query Space	GET:/v2.0/cloud/space/{space_id}	API Docs	
+Query Space List	GET:/v2.0/cloud/space/child	API Docs	
+Modify Space Information	PUT:/v2.0/cloud/space/{space_id}	API Docs	
+Query Parent-Child Relationship	GET:/v2.0/cloud/space/relation	API Docs	
+Device Management		View Docs	
+Get Status Reporting Log	GET:/v2.0/cloud/thing/{device_id}/report-logs	API Docs	
+Get Update Progress	GET:/v2.0/cloud/thing/{device_id}/firmware/{channel}/progress	API Docs	
+Query Device Details in Bulk	GET:/v2.0/cloud/thing/batch	API Docs	
+Delete Device	DELETE:/v2.0/cloud/thing/{device_id}	API Docs	
+Get Update Information	GET:/v2.0/cloud/thing/{device_id}/firmware	API Docs	
+Query Device Details	GET:/v2.0/cloud/thing/{device_id}	API Docs	
+Confirm Start of Update	POST:/v2.0/cloud/thing/{device_id}/firmware/{channel}	API Docs	
+Get Device State	GET:/v2.0/cloud/thing/{device_id}/state	API Docs	
+Get Operation Log	GET:/v2.0/cloud/thing/{device_id}/logs	API Docs	
+Modify Basic Properties	POST:/v2.0/cloud/thing/{device_id}/attribute	API Docs	
+Freeze/Unfreeze Device	POST:/v2.0/cloud/thing/{device_id}/freeze	API Docs	
+Transfer Device	POST:/v2.0/cloud/thing/{device_id}/transfer	API Docs	
+Restore Factory Defaults	POST:/v2.0/cloud/thing/{device_id}/reset	API Docs	
+Query Devices in Space	GET:/v2.0/cloud/thing/space/device	API Docs	
+Query Devices in Project	GET:/v2.0/cloud/thing/device	API Docs	
+Pair Device by Scanning QR Code	POST:/v2.0/cloud/thing/active/qrcode	API Docs	
+Query Pairing Result	GET:/v2.0/cloud/thing/active/token/{token}	API Docs	
+Send Signal Detection Instruction	POST:/v2.0/cloud/thing/signal/detection/issue	API Docs	
+Query Signal Strength	GET:/v2.0/cloud/thing/{device_id}/{device_type}/signal	API Docs	
+Get Status Reporting Log	GET:/v2.1/cloud/thing/{device_id}/report-logs	API Docs	
+Query Latest Device Information by UUID	GET:/v2.0/cloud/thing/last/{uuid}	API Docs	
+Device Control		View Docs	
+Send Actions	POST:/v2.0/cloud/thing/{device_id}/shadow/actions	API Docs	
+Query Properties	GET:/v2.0/cloud/thing/{device_id}/shadow/properties	API Docs	
+Modify Properties	POST:/v2.0/cloud/thing/{device_id}/shadow/properties	API Docs	
+Query Desired Properties	GET:/v2.0/cloud/thing/{device_id}/shadow/properties/desired	API Docs	
+Send Property	POST:/v2.0/cloud/thing/{device_id}/shadow/properties/issue	API Docs	
+Set Desired Property	POST:/v2.0/cloud/thing/{device_id}/shadow/properties/desired	API Docs	
+Query Things Data Model	GET:/v2.0/cloud/thing/{device_id}/model	API Docs	
+Device Group V2		View Docs	
+Query Group	GET:/v2.0/cloud/thing/group/{group_id}	API Docs	
+Add Device	PUT:/v2.0/cloud/thing/group/{group_id}/devices	API Docs	
+Delete Devices	DELETE:/v2.0/cloud/thing/group/{group_id}/devices	API Docs	
+Get Device Group	GET:/v2.0/cloud/thing/group/device/{device_id}	API Docs	
+Query Group Properties	GET:/v2.0/cloud/thing/group/{group_id}/properties	API Docs	
+Delete Group	DELETE:/v2.0/cloud/thing/group/{group_id}	API Docs	
+Create Group	POST:/v2.0/cloud/thing/group	API Docs	
+Send Group Properties	POST:/v2.0/cloud/thing/group/properties	API Docs	
+Query Group Devices	GET:/v2.0/cloud/thing/group/{group_id}/devices	API Docs	
+Rename Group	PUT:/v2.0/cloud/thing/group/{group_id}/{name}	API Docs	
+Get Groups in Space	GET:/v2.0/cloud/thing/group	API Docs	
+Scene Linkage Rules		View Docs	
+Get Linkage Rule Details	GET:/v2.0/cloud/scene/rule/{rule_id}	API Docs	
+Query Linkage Rules	GET:/v2.0/cloud/scene/rule	API Docs	
+Delete Linkage Rule	DELETE:/v2.0/cloud/scene/rule	API Docs	
+Trigger Tap-to-Run	POST:/v2.0/cloud/scene/rule/{rule_id}/actions/trigger	API Docs	
+Modify Linkage Rule	PUT:/v2.0/cloud/scene/rule/{rule_id}	API Docs	
+Enable/Disable Automation	PUT:/v2.0/cloud/scene/rule/state	API Docs	
+Add Linkage Rule	POST:/v2.0/cloud/scene/rule	API Docs	
+Device Control(Standard Instruction Set)		View Docs	
+Get the specifications and properties of the device	GET:/v1.0/iot-03/devices/{device_id}/specification	API Docs	
+Get the instruction set of the device	GET:/v1.0/iot-03/devices/{device_id}/functions	API Docs	
+Get the instruction set of the category	GET:/v1.0/iot-03/categories/{category}/functions	API Docs	
+Send commands	POST:/v1.0/iot-03/devices/{device_id}/commands	API Docs	
+Get Category List	GET:/v1.0/iot-03/device-categories	API Docs	
+Get the status of a single device	GET:/v1.0/iot-03/devices/{device_id}/status	API Docs	
+Get the latest status of multiple devices	GET:/v1.0/iot-03/devices/status	API Docs	
+Get Status Set	GET:/v1.0/iot-03/categories/{category}/status	API Docs	
+Device Group		View Docs	
+Query Group Properties	GET:/v2.1/cloud/thing/group/{group_id}/properties	API Docs	
+Get Groups in Space	GET:/v2.1/cloud/thing/group	API Docs	
+Add Devices	PUT:/v2.1/cloud/thing/group/{group_id}/devices	API Docs	
+Create Group	POST:/v2.1/cloud/thing/group	API Docs	
+Get Device Group	GET:/v2.1/cloud/thing/group/device/{device_id}	API Docs	
+Query Group Task Progress	GET:/v2.1/cloud/thing/group/task/{group_id}/{task_id}	API Docs	
+Query Group Status	GET:/v2.1/cloud/thing/group/{group_id}/status-set	API Docs	
+Remove Devices	DELETE:/v2.1/cloud/thing/group/{group_id}/devices	API Docs	
+Delete Group	DELETE:/v2.1/cloud/thing/group/{group_id}	API Docs	
+Query Group Devices	GET:/v2.1/cloud/thing/group/{group_id}/devices	API Docs	
+Modify Group Information	PUT:/v2.1/cloud/thing/group/{group_id}	API Docs	
+Send Group Properties	POST:/v2.1/cloud/thing/group/{group_id}/properties	API Docs	
+Query Group Details	GET:/v2.1/cloud/thing/group/{group_id}	API Docs	
