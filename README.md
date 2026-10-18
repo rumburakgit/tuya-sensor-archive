@@ -14,3 +14,6 @@ Archiwizacja odczytów temperatury i wilgotności z czujników Tuya.
 
 Aktywuj środowisko wirtualne i uruchom aplikację zgodnie
 z instrukcjami projektu.
+
+source .venv/bin/activate
+python3 app.py
