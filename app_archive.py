@@ -45,6 +45,8 @@ HTML = """
 <meta http-equiv="refresh" content="60">
 <title>Archiwum stacji pogodowej</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1"></script>
 
 <style>
 * { box-sizing: border-box; }
@@ -64,6 +66,53 @@ h1 { margin-bottom: 4px; }
   color: #64748b;
   margin-bottom: 24px;
   line-height: 1.6;
+}
+
+.controls {
+  margin-bottom: 20px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn {
+  background: white;
+  border: 1px solid #cbd5e1;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.btn:hover {
+  background: #f8fafc;
+  border-color: #94a3b8;
+}
+
+.btn.active {
+  background: #2563eb;
+  color: white;
+  border-color: #2563eb;
+}
+
+.custom-time {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: white;
+  padding: 4px 12px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+}
+
+input[type="datetime-local"] {
+  border: none;
+  font-family: inherit;
+  font-size: 14px;
+  color: #1e293b;
+  outline: none;
 }
 
 .cards, .charts {
@@ -198,6 +247,23 @@ h1 { margin-bottom: 4px; }
 
 <h2>Wykresy — ostatnie 48 godzin</h2>
 
+<div class="controls">
+  <span style="align-self: center; font-weight: 600; font-size: 14px; margin-right: 4px;">Start:</span>
+  <div class="custom-time">
+    <input type="datetime-local" id="startTimePicker" onchange="updateCustomRange()">
+  </div>
+
+  <span style="align-self: center; font-weight: 600; font-size: 14px; margin-left: 8px; margin-right: 4px;">Czas trwania:</span>
+  <button class="btn" onclick="setRange(1, this)">1h</button>
+  <button class="btn" onclick="setRange(2, this)">2h</button>
+  <button class="btn" onclick="setRange(3, this)">3h</button>
+  <button class="btn" onclick="setRange(6, this)">6h</button>
+  <button class="btn" onclick="setRange(12, this)">12h</button>
+  <button class="btn" onclick="setRange(24, this)">24h</button>
+  <button class="btn active" onclick="setRange(48, this)">48h</button>
+  <button class="btn" onclick="resetCharts()" style="margin-left: auto;">Reset / Teraz</button>
+</div>
+
 <div class="charts">
   <div class="chart-card">
     <h3>🌡️ Temperatura</h3>
@@ -217,6 +283,8 @@ h1 { margin-bottom: 4px; }
 <script>
 const temps = {{ historia_temp | safe }};
 const hums = {{ historia_hum | safe }};
+const chartInstances = {};
+let currentDurationHours = 48;
 
 function formatDate(value) {
   return new Date(Number(value)).toLocaleString('pl-PL', {
@@ -227,8 +295,61 @@ function formatDate(value) {
   });
 }
 
+function updateCharts(startMs, endMs) {
+  for (const id in chartInstances) {
+    const chart = chartInstances[id];
+    chart.options.scales.x.min = startMs;
+    chart.options.scales.x.max = endMs;
+    chart.update('none');
+  }
+}
+
+function updateCustomRange() {
+  const picker = document.getElementById('startTimePicker');
+  if (!picker.value) return;
+  
+  const startMs = new Date(picker.value).getTime();
+  const endMs = startMs + (currentDurationHours * 3600000);
+  updateCharts(startMs, endMs);
+}
+
+function setRange(hours, btn) {
+  currentDurationHours = hours;
+  
+  document.querySelectorAll('.controls .btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+
+  const picker = document.getElementById('startTimePicker');
+  let startMs;
+  let endMs;
+
+  if (picker.value) {
+    startMs = new Date(picker.value).getTime();
+    endMs = startMs + (hours * 3600000);
+  } else {
+    endMs = {{ koniec_ms }};
+    startMs = endMs - (hours * 3600000);
+  }
+  
+  updateCharts(startMs, endMs);
+}
+
+function resetCharts() {
+  document.getElementById('startTimePicker').value = '';
+  currentDurationHours = 48;
+  
+  for (const id in chartInstances) {
+    chartInstances[id].resetZoom();
+  }
+  
+  document.querySelectorAll('.controls .btn').forEach(b => {
+    if (b.innerText === '48h') b.classList.add('active');
+    else b.classList.remove('active');
+  });
+}
+
 function makeChart(id, datasets, unit) {
-  new Chart(document.getElementById(id), {
+  chartInstances[id] = new Chart(document.getElementById(id), {
     type: 'line',
     data: { datasets: datasets },
     options: {
@@ -238,7 +359,7 @@ function makeChart(id, datasets, unit) {
       normalized: false,
       interaction: {
         intersect: false,
-        mode: 'nearest'
+        mode: 'index'
       },
       elements: {
         line: { tension: 0.15 },
@@ -266,6 +387,21 @@ function makeChart(id, datasets, unit) {
         }
       },
       plugins: {
+        zoom: {
+          pan: {
+            enabled: true,
+            mode: 'x',
+          },
+          zoom: {
+            wheel: {
+              enabled: true,
+            },
+            pinch: {
+              enabled: true
+            },
+            mode: 'x',
+          }
+        },
         tooltip: {
           callbacks: {
             title: items => items.length
