@@ -22,6 +22,10 @@ DEVICES = [
     ("Temp Kuchnias", "bf09f3b9302d16a74froza"),
     ("Temp Grzejnik", "bf333171b6295a9253wx0y"),
     ("Temp Zielony", "bff67b6528b7b61ab34bab"),
+    ("Temp Jadalnia", "bf820e12f85f729ddaxkre"),
+    ("Temp Przedpokój", "bf587bca663683547dxy4p"),
+    ("Temp żółty pok", "bfbf68aa252e1f7893a3zz"),
+    
 ]
 
 PROG_BRAKU_DANYCH_MIN = 10
