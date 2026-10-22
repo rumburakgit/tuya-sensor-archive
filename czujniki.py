@@ -19,9 +19,9 @@ REFRESH_TOKEN = os.getenv("TUYA_REFRESH_TOKEN", "")
 TOKEN_EXPIRES_AT = 0
 
 DEVICES = [
-    ("Czujnik główny", "bfff2b43e5cd3b4a8enrgm"),
-    ("Czujnik 1", "bf4ac560e810e7c0ff1e1h"),
-    ("Czujnik 2", "bff6e8a18f0a5e6663oeoo"),
+    ("Temp Kuchnias", "bf09f3b9302d16a74froza"),
+    ("Temp Grzejnik", "bf333171b6295a9253wx0y"),
+    ("Temp Zielony", "bff67b6528b7b61ab34bab"),
 ]
 
 PROG_BRAKU_DANYCH_MIN = 10
