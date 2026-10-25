@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
-from flask import Flask, render_template_string
+from flask import Flask, jsonify, render_template_string, request
 from dotenv import load_dotenv
 from supabase import create_client
 
@@ -34,7 +34,15 @@ DEVICES = [
     ("Temp Kuchnias", "bf09f3b9302d16a74froza"),
     ("Temp Grzejnik", "bf333171b6295a9253wx0y"),
     ("Temp Zielony", "bff67b6528b7b61ab34bab"),
+    ("Temp Jadalnia", "bf820e12f85f729ddaxkre"),
+    ("Temp Przedpokój", "bf587bca663683547dxy4p"),
+    ("Temp żółty pok", "bfbf68aa252e1f7893a3zz"),
+    ("Temp Jasionka", "weather_eprz")
 ]
+
+# Urządzenia pokazywane na osobnym wykresie temperatury
+# (stacja METAR EPRZ, bez wilgotności).
+OSOBNY_WYKRES = {"weather_eprz"}
 
 HTML = """
 <!doctype html>
@@ -42,7 +50,6 @@ HTML = """
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="refresh" content="60">
 <title>Archiwum stacji pogodowej</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
@@ -161,6 +168,10 @@ input[type="datetime-local"] {
 .stale { background: #fef3c7; color: #92400e; }
 .error { background: #fee2e2; color: #991b1b; }
 
+.chart-col {
+  min-width: 0;
+}
+
 .chart-wrap {
   height: 340px;
   position: relative;
@@ -186,12 +197,11 @@ input[type="datetime-local"] {
 <h1>🌦️ Moja stacja pogodowa</h1>
 
 <div class="sub">
-  Archiwum Supabase · ostatnie 48 godzin ·
-  automatyczne odświeżanie co 60 sekund
+  Archiwum Supabase · dane wykresów wczytywane przy zmianie zakresu
   <br>
-  Ostatnie odświeżenie: {{ czas_odswiezenia }}
+  Wczytanie strony: {{ czas_odswiezenia }}
   <br>
-  Wczytane rekordy: {{ liczba_rekordow }}
+  Wczytane rekordy: <span id="recordCount">{{ liczba_rekordow }}</span>
 </div>
 
 {% if blad %}
@@ -245,7 +255,7 @@ input[type="datetime-local"] {
 {% endfor %}
 </div>
 
-<h2>Wykresy — ostatnie 48 godzin</h2>
+<h2>Wykresy</h2>
 
 <div class="controls">
   <span style="align-self: center; font-weight: 600; font-size: 14px; margin-right: 4px;">Start:</span>
@@ -261,14 +271,26 @@ input[type="datetime-local"] {
   <button class="btn" onclick="setRange(12, this)">12h</button>
   <button class="btn" onclick="setRange(24, this)">24h</button>
   <button class="btn active" onclick="setRange(48, this)">48h</button>
+  <button class="btn" onclick="showAll(this)">Cała historia</button>
   <button class="btn" onclick="resetCharts()" style="margin-left: auto;">Reset / Teraz</button>
 </div>
 
+<div id="loadStatus" class="small" style="margin: -8px 0 16px;"></div>
+
 <div class="charts">
-  <div class="chart-card">
-    <h3>🌡️ Temperatura</h3>
-    <div class="chart-wrap">
-      <canvas id="tempChart"></canvas>
+  <div class="chart-col">
+    <div class="chart-card">
+      <h3>🌡️ Temperatura</h3>
+      <div class="chart-wrap">
+        <canvas id="tempChart"></canvas>
+      </div>
+    </div>
+
+    <div class="chart-card">
+      <h3>✈️ Temperatura — Jasionka (METAR)</h3>
+      <div class="chart-wrap">
+        <canvas id="jasionkaChart"></canvas>
+      </div>
     </div>
   </div>
 
@@ -283,6 +305,7 @@ input[type="datetime-local"] {
 <script>
 const temps = {{ historia_temp | safe }};
 const hums = {{ historia_hum | safe }};
+const jasionka = {{ historia_jasionka | safe }};
 const chartInstances = {};
 let currentDurationHours = 48;
 
@@ -295,6 +318,18 @@ function formatDate(value) {
   });
 }
 
+let requestId = 0;
+
+function setActiveButton(btn) {
+  document.querySelectorAll('.controls .btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+}
+
+function buttonByLabel(label) {
+  return [...document.querySelectorAll('.controls .btn')]
+    .find(b => b.innerText === label);
+}
+
 function updateCharts(startMs, endMs) {
   for (const id in chartInstances) {
     const chart = chartInstances[id];
@@ -304,48 +339,83 @@ function updateCharts(startMs, endMs) {
   }
 }
 
+// Zwraca [startMs, endMs]; startMs === null oznacza całą historię.
+function currentRange() {
+  const picker = document.getElementById('startTimePicker');
+  const now = Date.now();
+
+  if (currentDurationHours === null) return [null, now];
+
+  if (picker.value) {
+    const startMs = new Date(picker.value).getTime();
+    return [startMs, startMs + (currentDurationHours * 3600000)];
+  }
+
+  return [now - (currentDurationHours * 3600000), now];
+}
+
+// Pobiera z serwera dane dla zakresu i podmienia je na wykresach.
+async function loadRange() {
+  const [startMs, endMs] = currentRange();
+  const myId = ++requestId;
+  const status = document.getElementById('loadStatus');
+  status.textContent = 'Wczytywanie…';
+
+  const params = new URLSearchParams({ do: endMs });
+  if (startMs !== null) params.set('od', startMs);
+
+  try {
+    const response = await fetch('/api/historia?' + params);
+    const dane = await response.json();
+    if (!response.ok) throw new Error(dane.blad || response.status);
+
+    // Ignoruj odpowiedź, jeśli w międzyczasie wybrano inny zakres.
+    if (myId !== requestId) return;
+
+    chartInstances.tempChart.data.datasets = dane.temp;
+    chartInstances.humChart.data.datasets = dane.hum;
+    chartInstances.jasionkaChart.data.datasets = dane.jasionka;
+
+    for (const id in chartInstances) {
+      chartInstances[id].resetZoom('none');
+    }
+    updateCharts(startMs ?? dane.poczatek_ms, endMs);
+
+    document.getElementById('recordCount').textContent = dane.liczba_rekordow;
+    status.textContent = '';
+  } catch (exc) {
+    if (myId !== requestId) return;
+    status.textContent = 'Błąd wczytywania danych: ' + exc.message;
+  }
+}
+
 function updateCustomRange() {
   const picker = document.getElementById('startTimePicker');
   if (!picker.value) return;
-  
-  const startMs = new Date(picker.value).getTime();
-  const endMs = startMs + (currentDurationHours * 3600000);
-  updateCharts(startMs, endMs);
+
+  // Data "Start" nie ma sensu dla całej historii — wracamy do 48h.
+  if (currentDurationHours === null) {
+    currentDurationHours = 48;
+    setActiveButton(buttonByLabel('48h'));
+  }
+
+  loadRange();
 }
 
 function setRange(hours, btn) {
   currentDurationHours = hours;
-  
-  document.querySelectorAll('.controls .btn').forEach(b => b.classList.remove('active'));
-  if (btn) btn.classList.add('active');
+  setActiveButton(btn);
+  loadRange();
+}
 
-  const picker = document.getElementById('startTimePicker');
-  let startMs;
-  let endMs;
-
-  if (picker.value) {
-    startMs = new Date(picker.value).getTime();
-    endMs = startMs + (hours * 3600000);
-  } else {
-    endMs = {{ koniec_ms }};
-    startMs = endMs - (hours * 3600000);
-  }
-  
-  updateCharts(startMs, endMs);
+function showAll(btn) {
+  document.getElementById('startTimePicker').value = '';
+  setRange(null, btn);
 }
 
 function resetCharts() {
   document.getElementById('startTimePicker').value = '';
-  currentDurationHours = 48;
-  
-  for (const id in chartInstances) {
-    chartInstances[id].resetZoom();
-  }
-  
-  document.querySelectorAll('.controls .btn').forEach(b => {
-    if (b.innerText === '48h') b.classList.add('active');
-    else b.classList.remove('active');
-  });
+  setRange(48, buttonByLabel('48h'));
 }
 
 function makeChart(id, datasets, unit) {
@@ -419,6 +489,7 @@ function makeChart(id, datasets, unit) {
 
 makeChart('tempChart', temps, 'Temperatura (°C)');
 makeChart('humChart', hums, 'Wilgotność (%)');
+makeChart('jasionkaChart', jasionka, 'Temperatura (°C)');
 </script>
 
 {% endif %}
@@ -427,21 +498,42 @@ makeChart('humChart', hums, 'Wilgotność (%)');
 """
 
 
-def pobierz_wszystkie_pomiary(poczatek_iso):
-    """Czyta historię porcjami, również gdy jest ponad 1000 rekordów."""
+def ms_na_iso(timestamp_ms):
+    return datetime.fromtimestamp(
+        timestamp_ms / 1000,
+        tz=timezone.utc,
+    ).isoformat()
+
+
+def pobierz_wszystkie_pomiary(poczatek_iso=None, koniec_iso=None):
+    """
+    Czyta historię porcjami, również gdy jest ponad 1000 rekordów.
+    Bez poczatek_iso czyta od najstarszego rekordu.
+    """
     wszystkie = []
     offset = 0
 
     while True:
-        wynik = (
+        zapytanie = (
             supabase.table("sensor_readings")
             .select(
                 "device_id,device_name,event_time_ms,"
                 "measured_at,code,value,unit"
             )
-            .gte("measured_at", poczatek_iso)
+        )
+
+        if poczatek_iso:
+            zapytanie = zapytanie.gte("measured_at", poczatek_iso)
+        if koniec_iso:
+            zapytanie = zapytanie.lte("measured_at", koniec_iso)
+
+        # Sortowanie po pełnym kluczu daje stałą kolejność,
+        # więc porcje nie gubią ani nie dublują rekordów.
+        wynik = (
+            zapytanie
             .order("measured_at")
             .order("device_id")
+            .order("code")
             .range(offset, offset + PAGE_SIZE - 1)
             .execute()
         )
@@ -461,6 +553,7 @@ def przygotuj_widok(rekordy, teraz):
     ostatnie = {}
     temp_datasets = []
     hum_datasets = []
+    jasionka_datasets = []
 
     for nazwa, device_id in DEVICES:
         odczyty = [
@@ -545,13 +638,19 @@ def przygotuj_widok(rekordy, teraz):
             wynik.sort(key=lambda p: p["x"])
             return wynik
 
-        temp_datasets.append({
+        temp_dataset = {
             "label": nazwa,
             "data": punkty(temp, "va_temperature"),
             "pointRadius": 1.5,
             "borderWidth": 2,
             "spanGaps": False,
-        })
+        }
+
+        if device_id in OSOBNY_WYKRES:
+            jasionka_datasets.append(temp_dataset)
+            continue
+
+        temp_datasets.append(temp_dataset)
 
         hum_datasets.append({
             "label": nazwa,
@@ -565,6 +664,7 @@ def przygotuj_widok(rekordy, teraz):
         list(ostatnie.values()),
         temp_datasets,
         hum_datasets,
+        jasionka_datasets,
     )
 
 
@@ -581,7 +681,12 @@ def home():
             poczatek.isoformat()
         )
 
-        czujniki, historia_temp, historia_hum = przygotuj_widok(
+        (
+            czujniki,
+            historia_temp,
+            historia_hum,
+            historia_jasionka,
+        ) = przygotuj_widok(
             rekordy,
             koniec_ms,
         )
@@ -591,6 +696,7 @@ def home():
             czujniki=czujniki,
             historia_temp=json.dumps(historia_temp),
             historia_hum=json.dumps(historia_hum),
+            historia_jasionka=json.dumps(historia_jasionka),
             liczba_rekordow=len(rekordy),
             czas_odswiezenia=teraz.astimezone().strftime(
                 "%d.%m.%Y %H:%M:%S"
@@ -608,6 +714,7 @@ def home():
             czujniki=[],
             historia_temp="[]",
             historia_hum="[]",
+            historia_jasionka="[]",
             liczba_rekordow=0,
             czas_odswiezenia=teraz.astimezone().strftime(
                 "%d.%m.%Y %H:%M:%S"
@@ -616,6 +723,42 @@ def home():
             koniec_ms=koniec_ms,
             blad=str(exc),
         ), 500
+
+
+@app.route("/api/historia")
+def api_historia():
+    """Dane wykresów dla zakresu od/do (ms); bez od — cała historia."""
+    od_ms = request.args.get("od", type=int)
+    do_ms = request.args.get("do", type=int)
+    teraz_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+
+    try:
+        rekordy = pobierz_wszystkie_pomiary(
+            ms_na_iso(od_ms) if od_ms is not None else None,
+            ms_na_iso(do_ms) if do_ms is not None else None,
+        )
+
+        _, historia_temp, historia_hum, historia_jasionka = (
+            przygotuj_widok(rekordy, teraz_ms)
+        )
+
+    except Exception as exc:
+        app.logger.exception("Błąd odczytu archiwum Supabase")
+        return jsonify({"blad": str(exc)}), 500
+
+    if od_ms is None:
+        od_ms = min(
+            (int(r["event_time_ms"]) for r in rekordy),
+            default=teraz_ms,
+        )
+
+    return jsonify({
+        "temp": historia_temp,
+        "hum": historia_hum,
+        "jasionka": historia_jasionka,
+        "liczba_rekordow": len(rekordy),
+        "poczatek_ms": od_ms,
+    })
 
 
 if __name__ == "__main__":
