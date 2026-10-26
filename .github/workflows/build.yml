@@ -1,0 +1,55 @@
+name: Build executable
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "pobieranie/**"
+      - "prezentacja/**"
+      - "pakiet/**"
+      - ".github/workflows/build.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-executable
+  cancel-in-progress: true
+
+jobs:
+  build:
+    # Starsza glibc: plik działa na Ubuntu 22.04 i nowszych.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build
+        env:
+          PYTHON: python
+        run: ./pakiet/build.sh
+
+      - name: Smoke test
+        env:
+          SUPABASE_URL: https://example.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: a.b.c
+        run: ./dist/czujniki-tuya -u pobieranie/przelicz_srednie.py --help
+
+      - name: Publish release "najnowsza"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tar czf czujniki-tuya-linux-x86_64.tar.gz -C dist czujniki-tuya
+          gh release delete najnowsza --cleanup-tag --yes || true
+          gh release create najnowsza czujniki-tuya-linux-x86_64.tar.gz \
+            --title "Najnowsza wersja" \
+            --notes "Zbudowano z ${GITHUB_SHA::7}." \
+            --target "$GITHUB_SHA"

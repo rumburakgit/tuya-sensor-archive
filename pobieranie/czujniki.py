@@ -9,7 +9,10 @@ from dotenv import load_dotenv, set_key
 
 load_dotenv()
 
-ENV_FILE = os.path.join(os.path.dirname(__file__), ".env")
+# Spakowany program (pakiet/start.py) wskazuje wspólny .env obok exe lub w ~/.config.
+ENV_FILE = os.environ.get("SENSOR_ENV_FILE") or os.path.join(
+    os.path.dirname(__file__), ".env"
+)
 CLIENT_ID = os.environ["TUYA_CLIENT_ID"]
 CLIENT_SECRET = os.environ["TUYA_CLIENT_SECRET"]
 BASE_URL = "https://openapi.tuyaeu.com"

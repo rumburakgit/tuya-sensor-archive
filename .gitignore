@@ -20,3 +20,8 @@ __pycache__/
 *.tar.gz
 *.sqlite3
 *.db
+
+# Pakowanie (pakiet/build.sh)
+pakiet/.venv-build/
+build/
+dist/

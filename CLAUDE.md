@@ -11,6 +11,7 @@ Archives temperature/humidity readings from Tuya sensors (Tuya Cloud API, EU end
 - `pobieranie/` — the data-collection layer (own `.env` and `requirements.txt`). Archiving is run **manually**, normally via `pobieranie/panel.py`.
 - `analityka/` — the analytics layer: SQL only (`001_sensor_aggregates.sql`, applied manually in the Supabase SQL Editor; idempotent). Averages are computed **in Postgres** into `sensor_aggregates`; Python only calls `rpc("przelicz_srednie")`. Recalculation belongs to the collection side (`pobieranie/przelicz_srednie.py`, auto-run by `pobieranie/panel.py` after each archive run), never to the presentation layer.
 - `prezentacja/` — the presentation layer: reads only from Supabase, must never touch Tuya. Own `.env` (only `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`) and `requirements.txt`. `prezentacja/panel.py` starts/stops presentation servers; more (Apache ECharts, Grafana) will be added to its `PREZENTACJE` list.
+- `pakiet/` — packaging: `start.py` (launcher window + entry point) and `build.sh` build one PyInstaller `--onefile` executable `dist/czujniki-tuya` containing both panels; `.github/workflows/build.yml` builds it on `ubuntu-22.04` on every relevant push to `main` and replaces the `najnowsza` release. Details in `pakiet/README.md`.
 - `.venv/` stays at the repo root.
 
 ## Commands
@@ -27,6 +28,8 @@ There is no test suite, linter or build step. Run from the repo root:
 ./.venv/bin/python3 prezentacja/app_archive.py    # dashboard from Supabase, last 48h, http://127.0.0.1:5001
 ./.venv/bin/python3 pobieranie/app.py             # live dashboard straight from Tuya, last 1h, http://127.0.0.1:5000
 ./.venv/bin/python3 pobieranie/rzeszow_metar_to_csv.py  # standalone METAR (EPRZ) -> CSV in the cwd
+./.venv/bin/python3 pakiet/start.py               # launcher window for both panels (entry point of the executable)
+./pakiet/build.sh                                 # build dist/czujniki-tuya (own venv pakiet/.venv-build)
 ```
 
 Scripts need the `.env` of their own directory (`pobieranie/.env`, `prezentacja/.env`; see the READMEs there); they locate it relative to their own file, not the cwd. `.github/workflows/archive.yml` runs `archive.py` (in `pobieranie/`) with GitHub Secrets; it is **`workflow_dispatch` only** — the cron was removed, so README/GEMINI.md statements about "every 15 minutes" are out of date.
@@ -49,4 +52,5 @@ Scripts need the `.env` of their own directory (`pobieranie/.env`, `prezentacja/
 - **Device lists are duplicated**: `czujniki.DEVICES` (used by `archive.py` and `app.py`) and `app_archive.DEVICES` are separate and currently differ (`app_archive.py` lists more sensors than `czujniki.py` archives). When adding/removing a sensor, update both.
 - Tuya reports `va_temperature` in tenths of a degree — divide by 10 (done in both `archive.py` and `czujniki.pobierz_historie`). `va_humidity` is used as-is.
 - Timestamps are kept internally in Unix milliseconds (Tuya style) and converted to ISO UTC only when written to `measured_at`.
+- **Packaged executable**: panels spawn scripts via `sys.executable -u script.py`; in the frozen build `sys.executable` is the executable itself, so `pakiet/start.py` emulates that interpreter call. The frozen build uses one shared `.env` (next to the exe or `~/.config/tuya-sensor-archive/.env`), loaded into the environment by `start.py`, and passes its path as `SENSOR_ENV_FILE` so `czujniki.py` writes refreshed tokens there. Scripts are bundled as data files, so a new script (or a new library used only by a script) must be added to the lists in `pakiet/build.sh`.
 - Scripts use the Supabase `service_role` key, which bypasses RLS — it must never end up in browser-facing code.
