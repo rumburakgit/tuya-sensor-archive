@@ -15,11 +15,15 @@ Ten projekt służy do automatycznego pobierania danych z czujników Tuya (poprz
 
 ## Project Structure
 
+Wszystkie poniższe pliki znajdują się w katalogu `pobieranie/` (warstwa pobierająca dane).
+Ręczną archiwizację uruchamia się przez `pobieranie/panel.py`.
+Wyjątek: `app_archive.py` jest w `prezentacja/` (warstwa prezentacji, tylko Supabase).
+
 - `archive.py`: Główny skrypt archiwizujący. Pobiera logi z Tuya API i zapisuje je do Supabase, zapobiegając duplikatom.
 - `czujniki.py`: Moduł komunikacji z Tuya API. Zarządza autoryzacją (tokeny) i pobieraniem surowych danych.
 - `app_archive.py`: Dashboard Flask wyświetlający dane historyczne (ostatnie 48h) bezpośrednio z Supabase.
 - `app.py`: Uproszczony dashboard wyświetlający ostatnią godzinę pomiarów.
-- `.github/workflows/archive.yml`: Konfiguracja GitHub Actions (uruchamia archiwizację co 15 minut).
+- `.github/workflows/archive.yml`: Konfiguracja GitHub Actions (archiwizacja uruchamiana ręcznie, `workflow_dispatch`).
 - `requirements.txt`: Zależności projektu (`requests`, `python-dotenv`, `flask`, `supabase`).
 
 ## Building and Running
@@ -32,14 +36,16 @@ Ten projekt służy do automatycznego pobierania danych z czujników Tuya (poprz
    ```
 2. Zainstaluj zależności:
    ```bash
-   pip install -r requirements.txt
+   pip install -r pobieranie/requirements.txt
    ```
-3. Skonfiguruj plik `.env` (patrz sekcja Konfiguracja).
+3. Skonfiguruj plik `pobieranie/.env` (patrz sekcja Konfiguracja).
 
 ### Uruchamianie
-- **Archiwizacja:** `python archive.py`
-- **Dashboard (48h):** `python app_archive.py` (dostępny pod `http://127.0.0.1:5001`)
-- **Dashboard (1h):** `python app.py` (dostępny pod `http://127.0.0.1:5000`)
+- **Panel archiwizacji:** `python pobieranie/panel.py`
+- **Archiwizacja:** `python pobieranie/archive.py`, `python pobieranie/archive_metar.py`
+- **Panel prezentacji:** `python prezentacja/panel.py`
+- **Dashboard (48h):** `python prezentacja/app_archive.py` (dostępny pod `http://127.0.0.1:5001`)
+- **Dashboard (1h):** `python pobieranie/app.py` (dostępny pod `http://127.0.0.1:5000`)
 
 ## Configuration
 

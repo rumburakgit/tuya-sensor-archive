@@ -44,6 +44,13 @@ DEVICES = [
 # (stacja METAR EPRZ, bez wilgotności).
 OSOBNY_WYKRES = {"weather_eprz"}
 
+# Serie z tabeli sensor_aggregates (warstwa analityczna)
+# pokazywane na wykresie średnich temperatury.
+SREDNIE = [
+    ("mieszkanie", "Mieszkanie — średnia 3h"),
+    ("weather_eprz", "Jasionka — średnia dobowa"),
+]
+
 HTML = """
 <!doctype html>
 <html lang="pl">
@@ -292,6 +299,14 @@ input[type="datetime-local"] {
         <canvas id="jasionkaChart"></canvas>
       </div>
     </div>
+
+    <div class="chart-card">
+      <h3>📊 Średnie temperatury — mieszkanie i Jasionka</h3>
+      <div class="chart-wrap">
+        <canvas id="srednieChart"></canvas>
+      </div>
+      <div id="srednieInfo" class="small">{{ blad_srednich or '' }}</div>
+    </div>
   </div>
 
   <div class="chart-card">
@@ -306,6 +321,7 @@ input[type="datetime-local"] {
 const temps = {{ historia_temp | safe }};
 const hums = {{ historia_hum | safe }};
 const jasionka = {{ historia_jasionka | safe }};
+const srednie = {{ historia_srednie | safe }};
 const chartInstances = {};
 let currentDurationHours = 48;
 
@@ -375,6 +391,8 @@ async function loadRange() {
     chartInstances.tempChart.data.datasets = dane.temp;
     chartInstances.humChart.data.datasets = dane.hum;
     chartInstances.jasionkaChart.data.datasets = dane.jasionka;
+    chartInstances.srednieChart.data.datasets = dane.srednie;
+    document.getElementById('srednieInfo').textContent = dane.blad_srednich || '';
 
     for (const id in chartInstances) {
       chartInstances[id].resetZoom('none');
@@ -476,7 +494,10 @@ function makeChart(id, datasets, unit) {
           callbacks: {
             title: items => items.length
               ? formatDate(items[0].parsed.x)
-              : ''
+              : '',
+            // Punkty średnich niosą dodatkowo pokrycie okresu danymi.
+            label: ctx => ctx.dataset.label + ': ' + ctx.formattedValue
+              + (ctx.raw.pokrycie != null ? ' · pokrycie ' + ctx.raw.pokrycie + '%' : '')
           }
         },
         legend: {
@@ -490,6 +511,7 @@ function makeChart(id, datasets, unit) {
 makeChart('tempChart', temps, 'Temperatura (°C)');
 makeChart('humChart', hums, 'Wilgotność (%)');
 makeChart('jasionkaChart', jasionka, 'Temperatura (°C)');
+makeChart('srednieChart', srednie, 'Temperatura (°C)');
 </script>
 
 {% endif %}
@@ -547,6 +569,112 @@ def pobierz_wszystkie_pomiary(poczatek_iso=None, koniec_iso=None):
         offset += PAGE_SIZE
 
     return wszystkie
+
+
+def iso_na_ms(tekst):
+    return int(datetime.fromisoformat(tekst).timestamp() * 1000)
+
+
+def pobierz_srednie(poczatek_iso=None, koniec_iso=None):
+    """
+    Czyta średnie temperatury (serie SREDNIE) z sensor_aggregates
+    dla okresów nachodzących na zakres. Bez poczatek_iso — od najstarszego.
+    """
+    wszystkie = []
+    offset = 0
+
+    while True:
+        zapytanie = (
+            supabase.table("sensor_aggregates")
+            .select("seria,okres,poczatek,koniec,wartosc,coverage_seconds")
+            .eq("code", "va_temperature")
+            .eq("metoda", "srednia_wazona_czasem")
+            .in_("seria", [seria for seria, _ in SREDNIE])
+        )
+
+        if poczatek_iso:
+            zapytanie = zapytanie.gt("koniec", poczatek_iso)
+        if koniec_iso:
+            zapytanie = zapytanie.lt("poczatek", koniec_iso)
+
+        wynik = (
+            zapytanie
+            .order("poczatek")
+            .order("seria")
+            .order("okres")
+            .range(offset, offset + PAGE_SIZE - 1)
+            .execute()
+        )
+
+        rekordy = wynik.data or []
+        wszystkie.extend(rekordy)
+
+        if len(rekordy) < PAGE_SIZE:
+            break
+
+        offset += PAGE_SIZE
+
+    return wszystkie
+
+
+def przygotuj_srednie(rekordy):
+    """
+    Każda średnia to poziomy odcinek od początku do końca okresu.
+    Między niesąsiadującymi okresami wstawiamy przerwę (y = null).
+    """
+    datasets = []
+
+    for seria, etykieta in SREDNIE:
+        punkty = []
+        poprzedni_koniec = None
+
+        for r in rekordy:
+            if r["seria"] != seria:
+                continue
+
+            poczatek = iso_na_ms(r["poczatek"])
+            koniec = iso_na_ms(r["koniec"])
+
+            if poprzedni_koniec is not None and poczatek != poprzedni_koniec:
+                punkty.append({"x": poprzedni_koniec, "y": None})
+
+            wartosc = (
+                float(r["wartosc"])
+                if r["wartosc"] is not None else None
+            )
+            pokrycie = round(
+                100 * r["coverage_seconds"] * 1000 / (koniec - poczatek)
+            )
+
+            punkty.append({"x": poczatek, "y": wartosc, "pokrycie": pokrycie})
+            punkty.append({"x": koniec, "y": wartosc, "pokrycie": pokrycie})
+            poprzedni_koniec = koniec
+
+        datasets.append({
+            "label": etykieta,
+            "data": punkty,
+            "pointRadius": 0,
+            "borderWidth": 2,
+            "tension": 0,
+            "spanGaps": False,
+        })
+
+    return datasets
+
+
+def srednie_lub_blad(poczatek_iso=None, koniec_iso=None):
+    """Brak średnich nie może zablokować reszty dashboardu."""
+    try:
+        return przygotuj_srednie(
+            pobierz_srednie(poczatek_iso, koniec_iso)
+        ), None
+    except Exception as exc:
+        app.logger.exception("Błąd odczytu sensor_aggregates")
+        return [], (
+            "Nie udało się wczytać średnich z sensor_aggregates "
+            "(czy wdrożono analityka/001_sensor_aggregates.sql?): "
+            f"{exc}"
+        )
 
 
 def przygotuj_widok(rekordy, teraz):
@@ -691,12 +819,18 @@ def home():
             koniec_ms,
         )
 
+        historia_srednie, blad_srednich = srednie_lub_blad(
+            poczatek.isoformat()
+        )
+
         return render_template_string(
             HTML,
             czujniki=czujniki,
             historia_temp=json.dumps(historia_temp),
             historia_hum=json.dumps(historia_hum),
             historia_jasionka=json.dumps(historia_jasionka),
+            historia_srednie=json.dumps(historia_srednie),
+            blad_srednich=blad_srednich,
             liczba_rekordow=len(rekordy),
             czas_odswiezenia=teraz.astimezone().strftime(
                 "%d.%m.%Y %H:%M:%S"
@@ -715,6 +849,8 @@ def home():
             historia_temp="[]",
             historia_hum="[]",
             historia_jasionka="[]",
+            historia_srednie="[]",
+            blad_srednich=None,
             liczba_rekordow=0,
             czas_odswiezenia=teraz.astimezone().strftime(
                 "%d.%m.%Y %H:%M:%S"
@@ -732,11 +868,11 @@ def api_historia():
     do_ms = request.args.get("do", type=int)
     teraz_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
 
+    od_iso = ms_na_iso(od_ms) if od_ms is not None else None
+    do_iso = ms_na_iso(do_ms) if do_ms is not None else None
+
     try:
-        rekordy = pobierz_wszystkie_pomiary(
-            ms_na_iso(od_ms) if od_ms is not None else None,
-            ms_na_iso(do_ms) if do_ms is not None else None,
-        )
+        rekordy = pobierz_wszystkie_pomiary(od_iso, do_iso)
 
         _, historia_temp, historia_hum, historia_jasionka = (
             przygotuj_widok(rekordy, teraz_ms)
@@ -745,6 +881,8 @@ def api_historia():
     except Exception as exc:
         app.logger.exception("Błąd odczytu archiwum Supabase")
         return jsonify({"blad": str(exc)}), 500
+
+    historia_srednie, blad_srednich = srednie_lub_blad(od_iso, do_iso)
 
     if od_ms is None:
         od_ms = min(
@@ -756,6 +894,8 @@ def api_historia():
         "temp": historia_temp,
         "hum": historia_hum,
         "jasionka": historia_jasionka,
+        "srednie": historia_srednie,
+        "blad_srednich": blad_srednich,
         "liczba_rekordow": len(rekordy),
         "poczatek_ms": od_ms,
     })
