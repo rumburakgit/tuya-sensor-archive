@@ -21,6 +21,20 @@ ostatnią wartością, tylko obniża `coverage_seconds`.
 | `<device_id>` (każdy czujnik z grupy) | Tuya | 3h | 15 min | te same średnie osobno dla każdego czujnika |
 | `weather_eprz` | METAR/SPECI | 1d | 60 min | raporty co 30 min, toleruje jeden brakujący raport |
 
+### Serie pochodne (różnice)
+
+| Seria | Metoda | Okres | Wzór |
+|---|---|---|---|
+| `mieszkanie-weather_eprz` | `roznica_srednich` | 3h | średnia 3h `mieszkanie` − średnia dobowa `weather_eprz` z doby zawierającej ten okres (temperatura; 8 wyników na dobę) |
+
+- Liczone funkcją `oblicz_roznice()` z już zapisanych średnich, więc w `przelicz_srednie()` muszą być po nich.
+- Okresy różnicy = okresy średniej 3h mieszkania. Gdy brakuje średniej dobowej Jasionki, `wartosc = null` (na wykresie przerwa).
+- `coverage_seconds` = pokrycie okresu 3h mieszkania × ułamek pokrycia doby Jasionki
+  (bieżąca, niepełna doba ma średnią dobową z dotychczasowych raportów).
+- `typ_serii = 'roznica'`, `zrodlo` = `tuya-metar`.
+- Kolejne wyliczenia dodaje się tak samo: nowa funkcja SQL (lub wywołanie istniejącej) w `przelicz_srednie()`,
+  wynik jako nowa seria w `sensor_aggregates`; prezentacja tylko ją rysuje.
+
 - Okresy liczone są w czasie polskim (`Europe/Warsaw`): doba 00:00–24:00, okresy 3h od północy
   (00–03, 03–06, …). W dniu zmiany czasu doba ma 23 lub 25 h, a okres 00–03 trwa 2 lub 4 h.
 - Okresy powstają od pierwszego do ostatniego odczytu serii — bieżący, niepełny okres
@@ -37,10 +51,10 @@ ostatnią wartością, tylko obniża `coverage_seconds`.
 | `seria` | `weather_eprz`, id czujnika lub nazwa grupy |
 | `code` | `va_temperature`, `va_humidity` |
 | `okres` | `3h`, `1d` |
-| `metoda` | `srednia_wazona_czasem` |
+| `metoda` | `srednia_wazona_czasem`, `roznica_srednich` |
 | `poczatek`, `koniec` | granice okresu `[poczatek, koniec)` |
 | `zrodlo` | `tuya`, `metar` |
-| `typ_serii` | `czujnik`, `grupa` |
+| `typ_serii` | `czujnik`, `grupa`, `roznica` |
 | `wartosc` | wynik (zaokrąglony do 0,01); `null`, gdy w okresie nie było danych |
 | `min`, `max` | skrajne odczyty użyte w okresie |
 | `unit` | jednostka |

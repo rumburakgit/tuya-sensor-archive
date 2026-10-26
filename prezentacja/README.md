@@ -38,6 +38,8 @@ Podstawowa prezentacja: lokalny dashboard Flask + Chart.js.
 - Wykres **Średnie temperatury** pokazuje średnie z tabeli `sensor_aggregates`
   (mieszkanie — średnia 3h, Jasionka — średnia dobowa) jako poziome odcinki na długość okresu;
   w podpowiedzi widać pokrycie okresu danymi. Lista serii: `SREDNIE` w `app_archive.py`.
+- Wykres **Różnica temperatur** pokazuje serie `roznica_srednich` (średnia 3h mieszkania − średnia dobowa Jasionki z tej samej doby);
+  okresy bez jednej ze średnich są przerwą na wykresie. Lista serii: `ROZNICE` w `app_archive.py`.
   Gdy tabeli nie ma (SQL z `analityka/` niewdrożony), pod wykresem pojawia się komunikat,
   a reszta dashboardu działa normalnie.
 - Działa pod adresem `http://127.0.0.1:5001`.

@@ -201,7 +201,127 @@ $$;
 
 
 -- --------------------------------------------------
--- 4. Przeliczenie wszystkich zdefiniowanych średnich
+-- 4. Różnica: średnia krótkiego okresu minus średnia okresu nadrzędnego
+-- --------------------------------------------------
+--
+-- Dla każdego okresu serii A (np. mieszkanie 3h) zapisuje
+--     (średnia A) - (średnia B z okresu zawierającego okres A),
+-- np. 3h mieszkania minus średnia dobowa Jasionki z tej samej doby
+-- (8 wyników na dobę). Wymaga wcześniej przeliczonych średnich.
+-- Gdy brakuje którejś średniej, zapisuje wiersz z wartosc = null
+-- (brak danych). coverage_seconds = pokrycie A × ułamek pokrycia B.
+-- Zwraca liczbę zapisanych wierszy.
+
+-- Poprzednia wersja (równe okresy) miała inną sygnaturę.
+drop function if exists public.oblicz_roznice(
+    text, text, text, text, text, timestamptz, timestamptz
+);
+
+-- Sprzątanie po poprzedniej wersji: różnica dobowa oraz średnie
+-- Jasionka 3h i mieszkanie 1d nie są już liczone.
+delete from public.sensor_aggregates
+where (seria = 'mieszkanie-weather_eprz' and okres = '1d')
+   or (seria = 'weather_eprz' and okres = '3h')
+   or (seria = 'mieszkanie' and okres = '1d');
+
+-- Różnice 3h bez odpowiadającej średniej 3h mieszkania
+-- (poprzednia wersja tworzyła je także z samych danych Jasionki).
+delete from public.sensor_aggregates r
+where r.seria = 'mieszkanie-weather_eprz'
+  and not exists (
+      select 1
+      from public.sensor_aggregates a
+      where a.seria = 'mieszkanie'
+        and a.code = r.code
+        and a.okres = r.okres
+        and a.metoda = 'srednia_wazona_czasem'
+        and a.poczatek = r.poczatek
+  );
+
+create or replace function public.oblicz_roznice(
+    p_seria text,
+    p_seria_a text,
+    p_okres_a text,
+    p_seria_b text,
+    p_okres_b text,
+    p_code text,
+    p_od timestamptz,
+    p_do timestamptz
+)
+returns integer
+language sql
+set search_path = public
+as $$
+with
+a as (
+    select *
+    from sensor_aggregates
+    where seria = p_seria_a
+      and code = p_code
+      and okres = p_okres_a
+      and metoda = 'srednia_wazona_czasem'
+      and koniec > p_od
+      and poczatek < p_do
+),
+b as (
+    select *
+    from sensor_aggregates
+    where seria = p_seria_b
+      and code = p_code
+      and okres = p_okres_b
+      and metoda = 'srednia_wazona_czasem'
+      and koniec > p_od
+      and poczatek < p_do
+),
+zapis as (
+    insert into sensor_aggregates (
+        seria, code, okres, metoda, poczatek, koniec, zrodlo, typ_serii,
+        wartosc, min, max, unit,
+        liczba_probek, liczba_czujnikow, coverage_seconds, przeliczono_at
+    )
+    select
+        p_seria, p_code, p_okres_a, 'roznica_srednich',
+        a.poczatek,
+        a.koniec,
+        concat_ws('-', a.zrodlo, b.zrodlo),
+        'roznica',
+        a.wartosc - b.wartosc,   -- null, gdy brakuje którejś średniej
+        null,
+        null,
+        a.unit,
+        a.liczba_probek + coalesce(b.liczba_probek, 0),
+        a.liczba_czujnikow + coalesce(b.liczba_czujnikow, 0),
+        round(
+            a.coverage_seconds * coalesce(
+                b.coverage_seconds / extract(epoch from b.koniec - b.poczatek),
+                0
+            )
+        )::integer,
+        now()
+    from a
+    left join b
+      on b.poczatek <= a.poczatek
+     and b.koniec >= a.koniec
+    on conflict (seria, code, okres, metoda, poczatek) do update set
+        koniec = excluded.koniec,
+        zrodlo = excluded.zrodlo,
+        typ_serii = excluded.typ_serii,
+        wartosc = excluded.wartosc,
+        min = excluded.min,
+        max = excluded.max,
+        unit = excluded.unit,
+        liczba_probek = excluded.liczba_probek,
+        liczba_czujnikow = excluded.liczba_czujnikow,
+        coverage_seconds = excluded.coverage_seconds,
+        przeliczono_at = excluded.przeliczono_at
+    returning 1
+)
+select count(*)::integer from zapis;
+$$;
+
+
+-- --------------------------------------------------
+-- 5. Przeliczenie wszystkich zdefiniowanych średnich
 -- --------------------------------------------------
 --
 -- Tu jest "konfiguracja" analityki: jakie serie, okresy i czasy ważności.
@@ -248,13 +368,20 @@ begin
         '1d', 24, interval '60 minutes', v_od, p_do
     );
 
+    -- Różnica: średnia 3h mieszkania minus średnia dobowa Jasionki
+    -- z tej samej doby (liczona z zapisanych wyżej średnich).
+    v_liczba := v_liczba + oblicz_roznice(
+        'mieszkanie-weather_eprz', 'mieszkanie', '3h', 'weather_eprz', '1d',
+        'va_temperature', v_od, p_do
+    );
+
     return v_liczba;
 end;
 $$;
 
 
 -- --------------------------------------------------
--- 5. Uprawnienia
+-- 6. Uprawnienia
 -- --------------------------------------------------
 -- Nowe tabele nie dostają automatycznie uprawnień dla ról API,
 -- więc nadajemy je jawnie. service_role omija RLS, ale nie GRANT-y.
@@ -269,11 +396,19 @@ revoke execute on function public.agreguj_wazona_czasem(
     text, text, text[], text, text, text, integer, interval, timestamptz, timestamptz
 ) from public, anon, authenticated;
 
+revoke execute on function public.oblicz_roznice(
+    text, text, text, text, text, text, timestamptz, timestamptz
+) from public, anon, authenticated;
+
 revoke execute on function public.przelicz_srednie(timestamptz, timestamptz)
     from public, anon, authenticated;
 
 grant execute on function public.agreguj_wazona_czasem(
     text, text, text[], text, text, text, integer, interval, timestamptz, timestamptz
+) to service_role;
+
+grant execute on function public.oblicz_roznice(
+    text, text, text, text, text, text, timestamptz, timestamptz
 ) to service_role;
 
 grant execute on function public.przelicz_srednie(timestamptz, timestamptz)

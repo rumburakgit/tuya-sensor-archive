@@ -44,11 +44,18 @@ DEVICES = [
 # (stacja METAR EPRZ, bez wilgotności).
 OSOBNY_WYKRES = {"weather_eprz"}
 
-# Serie z tabeli sensor_aggregates (warstwa analityczna)
-# pokazywane na wykresie średnich temperatury.
+# Serie temperatury z tabeli sensor_aggregates (warstwa analityczna):
+# (seria, okres, metoda, etykieta na wykresie).
 SREDNIE = [
-    ("mieszkanie", "Mieszkanie — średnia 3h"),
-    ("weather_eprz", "Jasionka — średnia dobowa"),
+    ("mieszkanie", "3h", "srednia_wazona_czasem", "Mieszkanie — średnia 3h"),
+    ("weather_eprz", "1d", "srednia_wazona_czasem", "Jasionka — średnia dobowa"),
+]
+
+ROZNICE = [
+    (
+        "mieszkanie-weather_eprz", "3h", "roznica_srednich",
+        "Mieszkanie (średnia 3h) − Jasionka (średnia dobowa)",
+    ),
 ]
 
 HTML = """
@@ -307,6 +314,14 @@ input[type="datetime-local"] {
       </div>
       <div id="srednieInfo" class="small">{{ blad_srednich or '' }}</div>
     </div>
+
+    <div class="chart-card">
+      <h3>↕️ Różnica temperatur — mieszkanie − Jasionka</h3>
+      <div class="chart-wrap">
+        <canvas id="roznicaChart"></canvas>
+      </div>
+      <div id="roznicaInfo" class="small">{{ blad_roznic or '' }}</div>
+    </div>
   </div>
 
   <div class="chart-card">
@@ -322,6 +337,7 @@ const temps = {{ historia_temp | safe }};
 const hums = {{ historia_hum | safe }};
 const jasionka = {{ historia_jasionka | safe }};
 const srednie = {{ historia_srednie | safe }};
+const roznice = {{ historia_roznice | safe }};
 const chartInstances = {};
 let currentDurationHours = 48;
 
@@ -332,6 +348,57 @@ function formatDate(value) {
     hour: '2-digit',
     minute: '2-digit'
   });
+}
+
+const GODZINA_MS = 3600000;
+// Do tej długości widocznego zakresu oś X pokazuje godziny, powyżej — dni.
+const PROG_GODZIN_MS = 24 * GODZINA_MS + 60000;
+const MAKS_ZNACZNIKOW = 8;
+
+// Znaczniki osi X w "okrągłych" chwilach czasu lokalnego:
+// pełne godziny (co 1, 2, 3, 4, 6 lub 12 h) albo północe (co 1, 2, 3, 7... dni).
+function znacznikiCzasu(min, max) {
+  const wynik = [];
+  const d = new Date(min);
+
+  if (max - min <= PROG_GODZIN_MS) {
+    const krok = [1, 2, 3, 4, 6, 12]
+      .find(k => (max - min) / (k * GODZINA_MS) <= MAKS_ZNACZNIKOW) || 12;
+    d.setMinutes(0, 0, 0);
+    while (d.getTime() < min || d.getHours() % krok !== 0) {
+      d.setHours(d.getHours() + 1);
+    }
+    while (d.getTime() <= max) {
+      wynik.push({ value: d.getTime() });
+      d.setHours(d.getHours() + krok);
+    }
+  } else {
+    const dni = (max - min) / (24 * GODZINA_MS);
+    const krok = [1, 2, 3, 7, 14, 30, 61, 91]
+      .find(k => dni / k <= MAKS_ZNACZNIKOW) || 182;
+    d.setHours(0, 0, 0, 0);
+    if (d.getTime() < min) d.setDate(d.getDate() + 1);
+    while (d.getTime() <= max) {
+      wynik.push({ value: d.getTime() });
+      d.setDate(d.getDate() + krok);
+    }
+  }
+
+  return wynik;
+}
+
+// Etykieta znacznika: godzina (z datą pod spodem przy pierwszym
+// znaczniku i o północy) albo sama data.
+function etykietaCzasu(value, index, zakresMs) {
+  const d = new Date(value);
+  const data = d.toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit' });
+
+  if (zakresMs > PROG_GODZIN_MS) return data;
+
+  const godzina = d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
+  return (index === 0 || (d.getHours() === 0 && d.getMinutes() === 0))
+    ? [godzina, data]
+    : godzina;
 }
 
 let requestId = 0;
@@ -393,6 +460,8 @@ async function loadRange() {
     chartInstances.jasionkaChart.data.datasets = dane.jasionka;
     chartInstances.srednieChart.data.datasets = dane.srednie;
     document.getElementById('srednieInfo').textContent = dane.blad_srednich || '';
+    chartInstances.roznicaChart.data.datasets = dane.roznice;
+    document.getElementById('roznicaInfo').textContent = dane.blad_roznic || '';
 
     for (const id in chartInstances) {
       chartInstances[id].resetZoom('none');
@@ -462,9 +531,14 @@ function makeChart(id, datasets, unit) {
           },
           min: {{ poczatek_ms }},
           max: {{ koniec_ms }},
+          afterBuildTicks: scale => {
+            scale.ticks = znacznikiCzasu(scale.min, scale.max);
+          },
           ticks: {
-            maxTicksLimit: 8,
-            callback: value => formatDate(value)
+            maxRotation: 0,
+            callback: function (value, index) {
+              return etykietaCzasu(value, index, this.max - this.min);
+            }
           }
         },
         y: {
@@ -512,6 +586,7 @@ makeChart('tempChart', temps, 'Temperatura (°C)');
 makeChart('humChart', hums, 'Wilgotność (%)');
 makeChart('jasionkaChart', jasionka, 'Temperatura (°C)');
 makeChart('srednieChart', srednie, 'Temperatura (°C)');
+makeChart('roznicaChart', roznice, 'Różnica temperatur (°C)');
 </script>
 
 {% endif %}
@@ -575,10 +650,12 @@ def iso_na_ms(tekst):
     return int(datetime.fromisoformat(tekst).timestamp() * 1000)
 
 
-def pobierz_srednie(poczatek_iso=None, koniec_iso=None):
+def pobierz_srednie(serie, poczatek_iso=None, koniec_iso=None):
     """
-    Czyta średnie temperatury (serie SREDNIE) z sensor_aggregates
+    Czyta serie temperatury (lista jak SREDNIE) z sensor_aggregates
     dla okresów nachodzących na zakres. Bez poczatek_iso — od najstarszego.
+    Zapytanie może zwrócić nadmiarowe kombinacje seria/okres/metoda;
+    odfiltrowuje je przygotuj_srednie().
     """
     wszystkie = []
     offset = 0
@@ -586,10 +663,11 @@ def pobierz_srednie(poczatek_iso=None, koniec_iso=None):
     while True:
         zapytanie = (
             supabase.table("sensor_aggregates")
-            .select("seria,okres,poczatek,koniec,wartosc,coverage_seconds")
+            .select("seria,okres,metoda,poczatek,koniec,wartosc,coverage_seconds")
             .eq("code", "va_temperature")
-            .eq("metoda", "srednia_wazona_czasem")
-            .in_("seria", [seria for seria, _ in SREDNIE])
+            .in_("seria", sorted({s[0] for s in serie}))
+            .in_("okres", sorted({s[1] for s in serie}))
+            .in_("metoda", sorted({s[2] for s in serie}))
         )
 
         if poczatek_iso:
@@ -617,19 +695,19 @@ def pobierz_srednie(poczatek_iso=None, koniec_iso=None):
     return wszystkie
 
 
-def przygotuj_srednie(rekordy):
+def przygotuj_srednie(rekordy, serie):
     """
     Każda średnia to poziomy odcinek od początku do końca okresu.
     Między niesąsiadującymi okresami wstawiamy przerwę (y = null).
     """
     datasets = []
 
-    for seria, etykieta in SREDNIE:
+    for seria, okres, metoda, etykieta in serie:
         punkty = []
         poprzedni_koniec = None
 
         for r in rekordy:
-            if r["seria"] != seria:
+            if (r["seria"], r["okres"], r["metoda"]) != (seria, okres, metoda):
                 continue
 
             poczatek = iso_na_ms(r["poczatek"])
@@ -662,11 +740,12 @@ def przygotuj_srednie(rekordy):
     return datasets
 
 
-def srednie_lub_blad(poczatek_iso=None, koniec_iso=None):
+def srednie_lub_blad(serie, poczatek_iso=None, koniec_iso=None):
     """Brak średnich nie może zablokować reszty dashboardu."""
     try:
         return przygotuj_srednie(
-            pobierz_srednie(poczatek_iso, koniec_iso)
+            pobierz_srednie(serie, poczatek_iso, koniec_iso),
+            serie,
         ), None
     except Exception as exc:
         app.logger.exception("Błąd odczytu sensor_aggregates")
@@ -820,7 +899,10 @@ def home():
         )
 
         historia_srednie, blad_srednich = srednie_lub_blad(
-            poczatek.isoformat()
+            SREDNIE, poczatek.isoformat()
+        )
+        historia_roznice, blad_roznic = srednie_lub_blad(
+            ROZNICE, poczatek.isoformat()
         )
 
         return render_template_string(
@@ -831,6 +913,8 @@ def home():
             historia_jasionka=json.dumps(historia_jasionka),
             historia_srednie=json.dumps(historia_srednie),
             blad_srednich=blad_srednich,
+            historia_roznice=json.dumps(historia_roznice),
+            blad_roznic=blad_roznic,
             liczba_rekordow=len(rekordy),
             czas_odswiezenia=teraz.astimezone().strftime(
                 "%d.%m.%Y %H:%M:%S"
@@ -851,6 +935,8 @@ def home():
             historia_jasionka="[]",
             historia_srednie="[]",
             blad_srednich=None,
+            historia_roznice="[]",
+            blad_roznic=None,
             liczba_rekordow=0,
             czas_odswiezenia=teraz.astimezone().strftime(
                 "%d.%m.%Y %H:%M:%S"
@@ -882,7 +968,8 @@ def api_historia():
         app.logger.exception("Błąd odczytu archiwum Supabase")
         return jsonify({"blad": str(exc)}), 500
 
-    historia_srednie, blad_srednich = srednie_lub_blad(od_iso, do_iso)
+    historia_srednie, blad_srednich = srednie_lub_blad(SREDNIE, od_iso, do_iso)
+    historia_roznice, blad_roznic = srednie_lub_blad(ROZNICE, od_iso, do_iso)
 
     if od_ms is None:
         od_ms = min(
@@ -896,6 +983,8 @@ def api_historia():
         "jasionka": historia_jasionka,
         "srednie": historia_srednie,
         "blad_srednich": blad_srednich,
+        "roznice": historia_roznice,
+        "blad_roznic": blad_roznic,
         "liczba_rekordow": len(rekordy),
         "poczatek_ms": od_ms,
     })
