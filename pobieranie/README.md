@@ -205,5 +205,7 @@ Plik `czujniki.py` odpowiada za komunikację z platformą Tuya Cloud i pobierani
 - Udostępnia dane potrzebne do pobierania historii pomiarów.
 
 **Ważne:** dane dostępowe, takie jak klucz klienta i tokeny, są pobierane ze zmiennych środowiskowych zapisanych w pliku `.env`. Nie należy umieszczać ich bezpośrednio w kodzie ani publikować w repozytorium.
+Odświeżone tokeny są zapisywane z powrotem do `pobieranie/.env`, a jeśli ustawiona jest
+zmienna `SENSOR_ENV_FILE` (robi to spakowany program, zob. `pakiet/README.md`) — do wskazanego w niej pliku.
 
 Plik `czujniki.py` stanowi warstwę komunikacyjną między projektem a Tuya Cloud — nie zapisuje samodzielnie archiwum w Supabase. Za archiwizację odpowiada `archive.py`.

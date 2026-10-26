@@ -11,6 +11,8 @@ Archiwizacja pomiarów temperatury i wilgotności (czujniki Tuya, METAR EPRZ) w 
   (wdrażane w Supabase SQL Editor). Szczegóły w [`analityka/README.md`](analityka/README.md).
 - `prezentacja/` — warstwa prezentacji, korzysta wyłącznie z Supabase, bez kontaktu z Tuya.
   Panel prezentacji i dashboard na porcie 5001. Szczegóły w [`prezentacja/README.md`](prezentacja/README.md).
+- `pakiet/` — okno startowe dla obu paneli i pakowanie ich do jednego pliku wykonywalnego
+  (PyInstaller, budowany w GitHub Actions). Szczegóły w [`pakiet/README.md`](pakiet/README.md).
 
 ## Szybki start
 
@@ -21,4 +23,8 @@ python3 -m venv .venv
 ./.venv/bin/python3 pobieranie/panel.py    # archiwizacja
 # prezentacja/.env — SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 ./.venv/bin/python3 prezentacja/panel.py   # prezentacja
+./.venv/bin/python3 pakiet/start.py        # okno startowe z oboma panelami
 ```
+
+Na komputerze bez Pythona można użyć gotowego pliku `czujniki-tuya`
+z release **najnowsza** — zob. [`pakiet/README.md`](pakiet/README.md).
