@@ -61,6 +61,8 @@ Lokalnie (plik `dist/czujniki-tuya`, działa na systemach z glibc nie starszą n
 ./dist/czujniki-tuya
 ```
 
+`build.sh` tworzy własne środowisko `pakiet/.venv-build` (z PyInstallerem), niezależne od `.venv`.
+
 Spakowany plik nie czyta `pobieranie/.env` — szuka `.env` obok siebie (`dist/`)
 lub w `~/.config/tuya-sensor-archive/.env`, np.:
 
@@ -71,8 +73,6 @@ cp pobieranie/.env ~/.config/tuya-sensor-archive/.env
 
 Tokeny Tuya odświeżone przez spakowany plik trafiają do tej kopii, nie do `pobieranie/.env`
 (dla `archive.py` bez znaczenia — token i tak pobiera z bazy).
-
-Skrypt tworzy własne środowisko `pakiet/.venv-build` (z PyInstallerem), niezależne od `.venv`.
 
 ## Jak to działa
 
