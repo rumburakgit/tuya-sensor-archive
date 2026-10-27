@@ -10,7 +10,7 @@ Archives temperature/humidity readings from Tuya sensors (Tuya Cloud API, EU end
 
 - `pobieranie/` — the data-collection layer (own `.env` and `requirements.txt`). Archiving is run **manually**, normally via `pobieranie/panel.py`.
 - `analityka/` — the analytics layer: SQL only (`002_heating_periods.sql` then `001_sensor_aggregates.sql`, applied manually in the Supabase SQL Editor; idempotent). Averages are computed **in Postgres** into `sensor_aggregates`; Python only calls `rpc("przelicz_srednie")`. Recalculation belongs to the collection side (`pobieranie/przelicz_srednie.py`, auto-run by `pobieranie/panel.py` after each archive run), never to the presentation layer.
-- `prezentacja/` — the presentation layer: reads only from Supabase, must never touch Tuya. Own `.env` (only `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`) and `requirements.txt`. `prezentacja/panel.py` starts/stops presentation servers; `app_echarts.py` (port 5002, imports `app_archive` for data) shows the 4 temperature charts in Apache ECharts; more (Grafana) will be added to its `PREZENTACJE` list.
+- `prezentacja/` — the presentation layer: reads only from Supabase, must never touch Tuya. Own `.env` (only `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`) and `requirements.txt`. `prezentacja/panel.py` starts/stops presentation servers; `app_echarts.py` (port 5002, imports `app_archive` for data) shows the 4 temperature charts in Apache ECharts; `streamlit_app.py` shows the same charts for Streamlit Community Cloud (shares `STYL_WYKRESOW`/`WYKRESY_HTML`/`WYKRESY_JS`/`dane_wykresow()` from `app_echarts.py`; reads with the `anon` key, see `odczyt_anon.sql` — `app_archive.py` prefers `SUPABASE_ANON_KEY` over `SUPABASE_SERVICE_ROLE_KEY`); more (Grafana) will be added to its `PREZENTACJE` list.
 - `pakiet/` — packaging: `start.py` (launcher window + entry point) and `build.sh` build one PyInstaller `--onefile` executable `dist/czujniki-tuya` containing both panels; `.github/workflows/build.yml` builds it on `ubuntu-22.04` on every relevant push to `main` and replaces the `najnowsza` release. Details in `pakiet/README.md`.
 - `.venv/` stays at the repo root.
 
@@ -27,6 +27,7 @@ There is no test suite, linter or build step. Run from the repo root:
 ./.venv/bin/python3 prezentacja/panel.py          # tkinter GUI: start/stop presentation servers + live log console
 ./.venv/bin/python3 prezentacja/app_archive.py    # dashboard from Supabase, last 48h, http://127.0.0.1:5001
 ./.venv/bin/python3 prezentacja/app_echarts.py    # 4 temperature charts in Apache ECharts, http://127.0.0.1:5002
+./.venv/bin/python3 -m streamlit run prezentacja/streamlit_app.py  # same charts in Streamlit
 ./.venv/bin/python3 pobieranie/app.py             # live dashboard straight from Tuya, last 1h, http://127.0.0.1:5000
 ./.venv/bin/python3 pobieranie/rzeszow_metar_to_csv.py  # standalone METAR (EPRZ) -> CSV in the cwd
 ./.venv/bin/python3 pakiet/start.py               # launcher window for both panels (entry point of the executable)

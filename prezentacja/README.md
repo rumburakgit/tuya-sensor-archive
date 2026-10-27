@@ -8,10 +8,12 @@ korzysta wyłącznie z tabel `sensor_readings` (i w przyszłości tabel analityc
 Plik `prezentacja/.env` (osobny od `pobieranie/.env`) zawiera tylko:
 
 - `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY` albo `SUPABASE_ANON_KEY`
 
-Docelowo warto zastąpić klucz `service_role` kluczem tylko do odczytu
-(klucz `anon` + polityki RLS `select`), bo prezentacja niczego nie zapisuje.
+Prezentacja niczego nie zapisuje, więc wystarcza klucz `anon` (gdy jest ustawiony, ma pierwszeństwo).
+Wymaga jednorazowego uruchomienia `prezentacja/odczyt_anon.sql` w Supabase SQL Editor:
+nadaje `anon` wyłącznie odczyt (`SELECT` + polityki RLS) tabel `sensor_readings`, `sensor_aggregates`
+i `heating_periods`; `sensor_archive_state` (z tokenem Tuya) pozostaje niedostępna.
 
 ## `panel.py` — panel prezentacji
 
@@ -68,3 +70,30 @@ Okresy grzania są zaznaczone na wszystkich poza wykresem Jasionki.
 ```bash
 ./.venv/bin/python3 prezentacja/app_echarts.py
 ```
+
+## `streamlit_app.py` — wykresy ECharts w Streamlit (Streamlit Community Cloud)
+
+Te same cztery wykresy co `app_echarts.py` (wspólny kod wykresów i danych), ale jako aplikacja Streamlit.
+Zakres wybiera się kontrolkami Streamlit: czas trwania (2h–7 dni, cała historia), strzałki ◀ 12h / 12h ▶ i **Teraz**.
+Dane są trzymane w pamięci podręcznej przez 5 minut. Przybliżanie i suwak działają jak w `app_echarts.py`.
+
+Lokalnie (używa `prezentacja/.env`):
+
+```bash
+./.venv/bin/python3 -m streamlit run prezentacja/streamlit_app.py
+```
+
+Wdrożenie w [Streamlit Community Cloud](https://share.streamlit.io):
+
+1. Raz uruchomić `prezentacja/odczyt_anon.sql` w Supabase SQL Editor.
+2. **Create app** → repozytorium z GitHuba, gałąź `main`, plik główny `prezentacja/streamlit_app.py`
+   (zależności z `prezentacja/requirements.txt`).
+3. W **Advanced settings → Secrets** wpisać (klucz `anon` z Supabase → Project Settings → API):
+
+   ```toml
+   SUPABASE_URL = "https://<projekt>.supabase.co"
+   SUPABASE_ANON_KEY = "<klucz anon>"
+   ```
+
+   Nie wpisywać tam klucza `service_role`.
+4. Aplikacja jest domyślnie publiczna; dostęp można ograniczyć w ustawieniach aplikacji (**Sharing**) do zaproszonych adresów e-mail.

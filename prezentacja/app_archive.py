@@ -17,11 +17,16 @@ BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 
 SUPABASE_URL = os.environ["SUPABASE_URL"]
-SUPABASE_SERVICE_ROLE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+# Prezentacja tylko czyta, więc wystarcza klucz anon (odczyt przez polityki
+# RLS z prezentacja/odczyt_anon.sql); bez niego — klucz service_role.
+SUPABASE_KEY = (
+    os.environ.get("SUPABASE_ANON_KEY")
+    or os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+)
 
 supabase = create_client(
     SUPABASE_URL,
-    SUPABASE_SERVICE_ROLE_KEY,
+    SUPABASE_KEY,
 )
 
 app = Flask(__name__)

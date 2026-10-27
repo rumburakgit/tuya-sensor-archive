@@ -5,6 +5,9 @@ Te same dane co app_archive.py (z niego pochodzą funkcje odczytu),
 ale tylko cztery wykresy temperatury: czujniki w mieszkaniu,
 Jasionka (METAR), średnie i różnica średnich z sensor_aggregates.
 
+Wykresy (STYL_WYKRESOW, WYKRESY_HTML, WYKRESY_JS) i dane (dane_wykresow)
+są wspólne z wersją Streamlit (streamlit_app.py).
+
 Uruchomienie:
     ./.venv/bin/python3 prezentacja/app_echarts.py   # http://127.0.0.1:5002
 """
@@ -18,6 +21,213 @@ import app_archive
 
 app = Flask(__name__)
 
+ECHARTS_JS = "https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"
+
+STYL_WYKRESOW = """
+.chart-card {
+  background: white;
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 3px 12px #0000000a;
+  margin-bottom: 18px;
+}
+
+.chart-wrap {
+  height: 380px;
+}
+
+.small {
+  font-size: 13px;
+  color: #64748b;
+  margin-top: 10px;
+  line-height: 1.6;
+}
+
+@media (max-width: 600px) {
+  .chart-card { padding: 15px; }
+  .chart-wrap { height: 300px; }
+}
+"""
+
+WYKRESY_HTML = """
+<div class="chart-card">
+  <h3>🌡️ Temperatura</h3>
+  <div id="tempChart" class="chart-wrap"></div>
+  <div id="grzanieInfo" class="small"></div>
+</div>
+
+<div class="chart-card">
+  <h3>✈️ Temperatura — Jasionka (METAR)</h3>
+  <div id="jasionkaChart" class="chart-wrap"></div>
+</div>
+
+<div class="chart-card">
+  <h3>📊 Średnie temperatury — mieszkanie i Jasionka</h3>
+  <div id="srednieChart" class="chart-wrap"></div>
+  <div id="srednieInfo" class="small"></div>
+</div>
+
+<div class="chart-card">
+  <h3>↕️ Różnica temperatur — mieszkanie − Jasionka</h3>
+  <div id="roznicaChart" class="chart-wrap"></div>
+  <div id="roznicaInfo" class="small"></div>
+</div>
+"""
+
+# Tworzy wykresy; pokazDane(dane, startMs, endMs) rysuje odpowiedź dane_wykresow().
+WYKRESY_JS = """
+const KOLOR_GRZANIA = 'rgba(234, 88, 12, ';
+const chartInstances = {};
+
+function formatDate(value) {
+  return new Date(Number(value)).toLocaleString('pl-PL', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
+
+// Okresy grzania jako pasy (markArea) i kreski włączenia (markLine).
+// Drobne włączenia — bledszy pas i przerywana kreska.
+function znacznikiGrzania(okresy) {
+  return {
+    markArea: {
+      silent: true,
+      data: okresy.map(o => [
+        {
+          xAxis: o.od,
+          itemStyle: { color: KOLOR_GRZANIA + (o.rodzaj === 'drobne' ? '0.06)' : '0.12)') }
+        },
+        { xAxis: o.do }
+      ])
+    },
+    markLine: {
+      silent: true,
+      symbol: 'none',
+      label: {
+        position: 'insideEndTop',
+        color: KOLOR_GRZANIA + '1)',
+        fontSize: 11,
+        formatter: p => p.data.rodzaj === 'drobne' ? 'drobne' : 'grzejnik'
+      },
+      data: okresy.map(o => ({
+        xAxis: o.od,
+        rodzaj: o.rodzaj,
+        lineStyle: {
+          color: KOLOR_GRZANIA + (o.rodzaj === 'drobne' ? '0.6)' : '0.9)'),
+          width: o.rodzaj === 'drobne' ? 1.5 : 2,
+          type: o.rodzaj === 'drobne' ? 'dashed' : 'solid'
+        }
+      }))
+    }
+  };
+}
+
+// Datasety w kształcie Chart.js ({label, data: [{x, y}]}) z app_archive
+// zamieniane na serie ECharts; null w y to przerwa w linii.
+function naSerie(datasety, schodkowe) {
+  return datasety.map(ds => ({
+    name: ds.label,
+    type: 'line',
+    showSymbol: !schodkowe,
+    symbolSize: 3,
+    connectNulls: false,
+    lineStyle: { width: 2 },
+    data: ds.data.map(p => ({ value: [p.x, p.y], pokrycie: p.pokrycie }))
+  }));
+}
+
+function makeChart(id) {
+  const chart = echarts.init(document.getElementById(id));
+  chart.group = 'temperatury';
+
+  chart.setOption({
+    animation: false,
+    grid: { left: 50, right: 20, top: 35, bottom: 95 },
+    tooltip: {
+      trigger: 'axis',
+      formatter: params => {
+        if (!params.length) return '';
+        const wiersze = params
+          .filter(p => p.value[1] != null)
+          .map(p => p.marker + p.seriesName + ': ' + p.value[1].toFixed(1) + ' °C'
+            + (p.data.pokrycie != null ? ' · pokrycie ' + p.data.pokrycie + '%' : ''));
+        return [formatDate(params[0].value[0]), ...wiersze].join('<br>');
+      }
+    },
+    legend: { bottom: 0, type: 'scroll' },
+    xAxis: {
+      type: 'time',
+      axisLabel: { hideOverlap: true }
+    },
+    yAxis: {
+      type: 'value',
+      name: '°C',
+      scale: true
+    },
+    dataZoom: [
+      { type: 'inside', filterMode: 'none' },
+      { type: 'slider', filterMode: 'none', bottom: 30, height: 20 }
+    ],
+    series: []
+  });
+
+  chartInstances[id] = chart;
+}
+
+function ustawSerie(id, serie, startMs, endMs) {
+  chartInstances[id].setOption({
+    xAxis: { min: startMs, max: endMs },
+    dataZoom: [{ start: 0, end: 100 }, { start: 0, end: 100 }],
+    series: serie
+  }, { replaceMerge: ['series'] });
+}
+
+function opisGrzania(okresy, blad) {
+  if (blad) return blad;
+  if (!okresy.length) return 'Brak wykrytych okresów grzania w zakresie.';
+  const drobnych = okresy.filter(o => o.rodzaj === 'drobne').length;
+  return 'Pomarańczowe pasy: okresy grzania grzejnika w kuchni '
+    + '(od włączenia do szczytu temperatury; bledsze — drobne włączenia) · w zakresie: '
+    + (okresy.length - drobnych) + ' wyraźnych, ' + drobnych + ' drobnych';
+}
+
+function pokazDane(dane, startMs, endMs) {
+  const start = startMs ?? dane.poczatek_ms;
+  const grzanie = znacznikiGrzania(dane.okresy_grzania);
+
+  const temp = naSerie(dane.temp, false);
+  if (temp.length) Object.assign(temp[0], grzanie);
+  ustawSerie('tempChart', temp, start, endMs);
+
+  ustawSerie('jasionkaChart', naSerie(dane.jasionka, false), start, endMs);
+
+  const srednie = naSerie(dane.srednie, true);
+  if (srednie.length) Object.assign(srednie[0], grzanie);
+  ustawSerie('srednieChart', srednie, start, endMs);
+
+  const roznice = naSerie(dane.roznice, true);
+  if (roznice.length) Object.assign(roznice[0], grzanie);
+  ustawSerie('roznicaChart', roznice, start, endMs);
+
+  document.getElementById('grzanieInfo').textContent =
+    opisGrzania(dane.okresy_grzania, dane.blad_grzania);
+  document.getElementById('srednieInfo').textContent = dane.blad_srednich || '';
+  document.getElementById('roznicaInfo').textContent = dane.blad_roznic || '';
+}
+
+makeChart('tempChart');
+makeChart('jasionkaChart');
+makeChart('srednieChart');
+makeChart('roznicaChart');
+// Przybliżanie i przesuwanie myszą działa na wszystkich wykresach naraz.
+echarts.connect('temperatury');
+window.addEventListener('resize', () => {
+  for (const id in chartInstances) chartInstances[id].resize();
+});
+"""
+
 HTML = """
 <!doctype html>
 <html lang="pl">
@@ -25,7 +235,7 @@ HTML = """
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Archiwum — ECharts</title>
-<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+<script src="{{ echarts_js }}"></script>
 
 <style>
 * { box-sizing: border-box; }
@@ -99,29 +309,10 @@ input[type="datetime-local"] {
   outline: none;
 }
 
-.chart-card {
-  background: white;
-  border-radius: 16px;
-  padding: 20px;
-  box-shadow: 0 3px 12px #0000000a;
-  margin-bottom: 18px;
-}
-
-.chart-wrap {
-  height: 380px;
-}
-
-.small {
-  font-size: 13px;
-  color: #64748b;
-  margin-top: 10px;
-  line-height: 1.6;
-}
+{{ styl_wykresow | safe }}
 
 @media (max-width: 600px) {
   body { padding: 12px; }
-  .chart-card { padding: 15px; }
-  .chart-wrap { height: 300px; }
 }
 </style>
 </head>
@@ -156,46 +347,16 @@ input[type="datetime-local"] {
 
 <div id="loadStatus" class="small" style="margin: -8px 0 16px;"></div>
 
-<div class="chart-card">
-  <h3>🌡️ Temperatura</h3>
-  <div id="tempChart" class="chart-wrap"></div>
-  <div id="grzanieInfo" class="small"></div>
-</div>
-
-<div class="chart-card">
-  <h3>✈️ Temperatura — Jasionka (METAR)</h3>
-  <div id="jasionkaChart" class="chart-wrap"></div>
-</div>
-
-<div class="chart-card">
-  <h3>📊 Średnie temperatury — mieszkanie i Jasionka</h3>
-  <div id="srednieChart" class="chart-wrap"></div>
-  <div id="srednieInfo" class="small"></div>
-</div>
-
-<div class="chart-card">
-  <h3>↕️ Różnica temperatur — mieszkanie − Jasionka</h3>
-  <div id="roznicaChart" class="chart-wrap"></div>
-  <div id="roznicaInfo" class="small"></div>
-</div>
+{{ wykresy_html | safe }}
 
 <script>
+{{ wykresy_js | safe }}
+
 const GODZINA_MS = 3600000;
 const KROK_PRZESUNIECIA_MS = 12 * GODZINA_MS;
-const KOLOR_GRZANIA = 'rgba(234, 88, 12, ';
 
-const chartInstances = {};
 let currentDurationHours = 48;
 let requestId = 0;
-
-function formatDate(value) {
-  return new Date(Number(value)).toLocaleString('pl-PL', {
-    day: '2-digit',
-    month: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
-}
 
 function setActiveButton(btn) {
   document.querySelectorAll('.controls .btn').forEach(b => b.classList.remove('active'));
@@ -205,94 +366,6 @@ function setActiveButton(btn) {
 function buttonByLabel(label) {
   return [...document.querySelectorAll('.controls .btn')]
     .find(b => b.innerText === label);
-}
-
-// Okresy grzania jako pasy (markArea) i kreski włączenia (markLine).
-// Drobne włączenia — bledszy pas i przerywana kreska.
-function znacznikiGrzania(okresy) {
-  return {
-    markArea: {
-      silent: true,
-      data: okresy.map(o => [
-        {
-          xAxis: o.od,
-          itemStyle: { color: KOLOR_GRZANIA + (o.rodzaj === 'drobne' ? '0.06)' : '0.12)') }
-        },
-        { xAxis: o.do }
-      ])
-    },
-    markLine: {
-      silent: true,
-      symbol: 'none',
-      label: {
-        position: 'insideEndTop',
-        color: KOLOR_GRZANIA + '1)',
-        fontSize: 11,
-        formatter: p => p.data.rodzaj === 'drobne' ? 'drobne' : 'grzejnik'
-      },
-      data: okresy.map(o => ({
-        xAxis: o.od,
-        rodzaj: o.rodzaj,
-        lineStyle: {
-          color: KOLOR_GRZANIA + (o.rodzaj === 'drobne' ? '0.6)' : '0.9)'),
-          width: o.rodzaj === 'drobne' ? 1.5 : 2,
-          type: o.rodzaj === 'drobne' ? 'dashed' : 'solid'
-        }
-      }))
-    }
-  };
-}
-
-// Datasety w kształcie Chart.js ({label, data: [{x, y}]}) z app_archive
-// zamieniane na serie ECharts; null w y to przerwa w linii.
-function naSerie(datasety, schodkowe) {
-  return datasety.map(ds => ({
-    name: ds.label,
-    type: 'line',
-    showSymbol: !schodkowe,
-    symbolSize: 3,
-    connectNulls: false,
-    lineStyle: { width: 2 },
-    data: ds.data.map(p => ({ value: [p.x, p.y], pokrycie: p.pokrycie }))
-  }));
-}
-
-function makeChart(id) {
-  const chart = echarts.init(document.getElementById(id));
-  chart.group = 'temperatury';
-
-  chart.setOption({
-    animation: false,
-    grid: { left: 50, right: 20, top: 20, bottom: 95 },
-    tooltip: {
-      trigger: 'axis',
-      formatter: params => {
-        if (!params.length) return '';
-        const wiersze = params
-          .filter(p => p.value[1] != null)
-          .map(p => p.marker + p.seriesName + ': ' + p.value[1].toFixed(1) + ' °C'
-            + (p.data.pokrycie != null ? ' · pokrycie ' + p.data.pokrycie + '%' : ''));
-        return [formatDate(params[0].value[0]), ...wiersze].join('<br>');
-      }
-    },
-    legend: { bottom: 0, type: 'scroll' },
-    xAxis: {
-      type: 'time',
-      axisLabel: { hideOverlap: true }
-    },
-    yAxis: {
-      type: 'value',
-      name: '°C',
-      scale: true
-    },
-    dataZoom: [
-      { type: 'inside', filterMode: 'none' },
-      { type: 'slider', filterMode: 'none', bottom: 30, height: 20 }
-    ],
-    series: []
-  });
-
-  chartInstances[id] = chart;
 }
 
 // Zwraca [startMs, endMs]; startMs === null oznacza całą historię.
@@ -308,23 +381,6 @@ function currentRange() {
   }
 
   return [now - (currentDurationHours * GODZINA_MS), now];
-}
-
-function ustawSerie(id, serie, startMs, endMs) {
-  chartInstances[id].setOption({
-    xAxis: { min: startMs, max: endMs },
-    dataZoom: [{ start: 0, end: 100 }, { start: 0, end: 100 }],
-    series: serie
-  }, { replaceMerge: ['series'] });
-}
-
-function opisGrzania(okresy, blad) {
-  if (blad) return blad;
-  if (!okresy.length) return 'Brak wykrytych okresów grzania w zakresie.';
-  const drobnych = okresy.filter(o => o.rodzaj === 'drobne').length;
-  return 'Pomarańczowe pasy: okresy grzania grzejnika w kuchni '
-    + '(od włączenia do szczytu temperatury; bledsze — drobne włączenia) · w zakresie: '
-    + (okresy.length - drobnych) + ' wyraźnych, ' + drobnych + ' drobnych';
 }
 
 // Pobiera z serwera dane dla zakresu i podmienia je na wykresach.
@@ -345,27 +401,7 @@ async function loadRange() {
     // Ignoruj odpowiedź, jeśli w międzyczasie wybrano inny zakres.
     if (myId !== requestId) return;
 
-    const start = startMs ?? dane.poczatek_ms;
-    const grzanie = znacznikiGrzania(dane.okresy_grzania);
-
-    const temp = naSerie(dane.temp, false);
-    if (temp.length) Object.assign(temp[0], grzanie);
-    ustawSerie('tempChart', temp, start, endMs);
-
-    ustawSerie('jasionkaChart', naSerie(dane.jasionka, false), start, endMs);
-
-    const srednie = naSerie(dane.srednie, true);
-    if (srednie.length) Object.assign(srednie[0], grzanie);
-    ustawSerie('srednieChart', srednie, start, endMs);
-
-    const roznice = naSerie(dane.roznice, true);
-    if (roznice.length) Object.assign(roznice[0], grzanie);
-    ustawSerie('roznicaChart', roznice, start, endMs);
-
-    document.getElementById('grzanieInfo').textContent =
-      opisGrzania(dane.okresy_grzania, dane.blad_grzania);
-    document.getElementById('srednieInfo').textContent = dane.blad_srednich || '';
-    document.getElementById('roznicaInfo').textContent = dane.blad_roznic || '';
+    pokazDane(dane, startMs, endMs);
     document.getElementById('recordCount').textContent = dane.liczba_rekordow;
     status.textContent = '';
   } catch (exc) {
@@ -432,16 +468,6 @@ function przesunZakres(kierunek) {
   loadRange();
 }
 
-makeChart('tempChart');
-makeChart('jasionkaChart');
-makeChart('srednieChart');
-makeChart('roznicaChart');
-// Przybliżanie i przesuwanie myszą działa na wszystkich wykresach naraz.
-echarts.connect('temperatury');
-window.addEventListener('resize', () => {
-  for (const id in chartInstances) chartInstances[id].resize();
-});
-
 loadRange();
 </script>
 </body>
@@ -449,30 +475,21 @@ loadRange();
 """
 
 
-@app.route("/")
-def home():
-    return render_template_string(HTML)
-
-
-@app.route("/api/historia")
-def api_historia():
-    """Dane czterech wykresów temperatury dla zakresu od/do (ms); bez od — cała historia."""
-    od_ms = request.args.get("od", type=int)
-    do_ms = request.args.get("do", type=int)
+def dane_wykresow(od_ms, do_ms):
+    """
+    Dane czterech wykresów temperatury dla zakresu od/do (ms);
+    od_ms = None — cała historia. Błąd odczytu pomiarów przerywa
+    (wyjątek), brak średnich czy okresów grzania — tylko komunikat.
+    """
     teraz_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
 
     od_iso = app_archive.ms_na_iso(od_ms) if od_ms is not None else None
     do_iso = app_archive.ms_na_iso(do_ms) if do_ms is not None else None
 
-    try:
-        rekordy = app_archive.pobierz_wszystkie_pomiary(od_iso, do_iso)
-        _, historia_temp, _, historia_jasionka = (
-            app_archive.przygotuj_widok(rekordy, teraz_ms)
-        )
-
-    except Exception as exc:
-        app.logger.exception("Błąd odczytu archiwum Supabase")
-        return jsonify({"blad": str(exc)}), 500
+    rekordy = app_archive.pobierz_wszystkie_pomiary(od_iso, do_iso)
+    _, historia_temp, _, historia_jasionka = (
+        app_archive.przygotuj_widok(rekordy, teraz_ms)
+    )
 
     historia_srednie, blad_srednich = app_archive.srednie_lub_blad(
         app_archive.SREDNIE, od_iso, do_iso
@@ -490,7 +507,7 @@ def api_historia():
             default=teraz_ms,
         )
 
-    return jsonify({
+    return {
         "temp": historia_temp,
         "jasionka": historia_jasionka,
         "srednie": historia_srednie,
@@ -501,7 +518,32 @@ def api_historia():
         "blad_grzania": blad_grzania,
         "liczba_rekordow": len(rekordy),
         "poczatek_ms": od_ms,
-    })
+    }
+
+
+@app.route("/")
+def home():
+    return render_template_string(
+        HTML,
+        echarts_js=ECHARTS_JS,
+        styl_wykresow=STYL_WYKRESOW,
+        wykresy_html=WYKRESY_HTML,
+        wykresy_js=WYKRESY_JS,
+    )
+
+
+@app.route("/api/historia")
+def api_historia():
+    """Dane wykresów dla zakresu od/do (ms); bez od — cała historia."""
+    try:
+        return jsonify(dane_wykresow(
+            request.args.get("od", type=int),
+            request.args.get("do", type=int),
+        ))
+
+    except Exception as exc:
+        app.logger.exception("Błąd odczytu archiwum Supabase")
+        return jsonify({"blad": str(exc)}), 500
 
 
 if __name__ == "__main__":
