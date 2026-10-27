@@ -16,9 +16,20 @@ from zoneinfo import ZoneInfo
 import streamlit as st
 from dotenv import load_dotenv
 
-# Lokalnie klucze są w prezentacja/.env; w Streamlit Cloud sekrety
-# z najwyższego poziomu (bez [sekcji]) trafiają do zmiennych środowiskowych.
+# Lokalnie klucze są w prezentacja/.env, w Streamlit Cloud — w Secrets.
+# app_archive czyta zmienne środowiskowe, więc sekrety przepisujemy do nich
+# jawnie (Streamlit robi to sam tylko w niektórych ścieżkach uruchomienia).
 load_dotenv(Path(__file__).resolve().parent / ".env")
+
+try:
+    nazwy_sekretow = list(st.secrets.keys())
+except Exception:
+    # Brak pliku sekretów (np. lokalnie) — zostaje .env.
+    nazwy_sekretow = []
+
+for nazwa in ("SUPABASE_URL", "SUPABASE_ANON_KEY"):
+    if nazwa in nazwy_sekretow and not os.environ.get(nazwa):
+        os.environ[nazwa] = str(st.secrets[nazwa])
 
 if not os.environ.get("SUPABASE_URL") or not (
     os.environ.get("SUPABASE_ANON_KEY")
@@ -29,7 +40,9 @@ if not os.environ.get("SUPABASE_URL") or not (
         "na najwyższym poziomie (bez nagłówka [sekcji]):\n\n"
         '`SUPABASE_URL = "https://<id-projektu>.supabase.co"`\n\n'
         '`SUPABASE_ANON_KEY = "sb_publishable_..."`\n\n'
-        "Po zapisaniu: Reboot app."
+        "Po zapisaniu: Reboot app.\n\n"
+        "Nazwy wpisów widoczne teraz w Secrets: "
+        + (", ".join(f"`{n}`" for n in nazwy_sekretow) or "brak")
     )
     st.stop()
 
