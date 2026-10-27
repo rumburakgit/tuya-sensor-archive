@@ -42,6 +42,10 @@ Podstawowa prezentacja: lokalny dashboard Flask + Chart.js.
   okresy bez jednej ze średnich są przerwą na wykresie. Lista serii: `ROZNICE` w `app_archive.py`.
   Gdy tabeli nie ma (SQL z `analityka/` niewdrożony), pod wykresem pojawia się komunikat,
   a reszta dashboardu działa normalnie.
+- Okresy grzania z tabeli `heating_periods` są zaznaczone na wykresach temperatury, średnich i różnicy:
+  ciągła pomarańczowa kreska w chwili włączenia grzejnika, pas do szczytu temperatury i przerywana kreska
+  w szczycie (brak jej, gdy okres jeszcze trwa). Czujnik grzejnika: `GRZEJNIK_DEVICE_ID` w `app_archive.py`.
+  Brak tabeli działa jak wyżej — komunikat pod wykresem temperatury.
 - Działa pod adresem `http://127.0.0.1:5001`.
 
 Można go też uruchomić bez panelu:

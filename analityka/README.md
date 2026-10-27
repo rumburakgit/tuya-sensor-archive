@@ -1,12 +1,14 @@
 # Warstwa analityczna
 
 Średnie liczone są **w bazie** (funkcje SQL w Supabase) i zapisywane w tabeli
-`sensor_aggregates`. Surowe pomiary w `sensor_readings` pozostają bez zmian.
+`sensor_aggregates`, a wykryte okresy grzania — w tabeli `heating_periods`.
+Surowe pomiary w `sensor_readings` pozostają bez zmian.
 
 ## Wdrożenie
 
-Zawartość `001_sensor_aggregates.sql` wkleić w Supabase → SQL Editor i uruchomić.
-Skrypt można bezpiecznie uruchamiać wielokrotnie (np. po zmianie definicji funkcji).
+Zawartość `002_heating_periods.sql`, a potem `001_sensor_aggregates.sql` wkleić w Supabase → SQL Editor
+i uruchomić (`przelicz_srednie()` z 001 wywołuje funkcję wykrywania z 002).
+Skrypty można bezpiecznie uruchamiać wielokrotnie (np. po zmianie definicji funkcji).
 Pierwsze wypełnienie tabeli: przycisk **Przelicz średnie** w `pobieranie/panel.py`.
 
 ## Zasady liczenia
@@ -64,6 +66,42 @@ ostatnią wartością, tylko obniża `coverage_seconds`.
 | `przeliczono_at` | czas ostatniego przeliczenia |
 
 Klucz główny: `(seria, code, okres, metoda, poczatek)` — przeliczenie nadpisuje wynik (upsert).
+
+## Okresy grzania (`heating_periods`)
+
+Wykrywa chwile włączenia grzejnika w kuchni: czujnik **Temp Grzejnik** (`bf333171b6295a9253wx0y`)
+zaczyna szybko rosnąć, a **Temp Kuchnias** (`bf09f3b9302d16a74froza`) rośnie wyraźnie wolniej
+i dołącza z opóźnieniem. Słońce ogrzewa całe pomieszczenie — oba czujniki rosną wtedy wolno
+i podobnie, więc taki wzrost nie jest okresem grzania.
+
+Funkcja `wykryj_okresy_grzania()` dla każdego odczytu czujnika przy grzejniku liczy prędkość wzrostu
+(°C/h) obu czujników w oknie 30 min wstecz:
+
+| Warunek | Domyślnie | Parametr |
+|---|---|---|
+| start: prędkość grzejnika ≥ | 1,5 °C/h | `p_prog` |
+| start: prędkość grzejnika − prędkość kuchni ≥ | 1,0 °C/h | `p_prog_przewagi` |
+| koniec: prędkość grzejnika ≤ 0 (przestał rosnąć) albo przerwa w danych > 2 × okno | — | `p_okno` |
+| okres zapisywany, gdy przyrost przy grzejniku ≥ | 2,0 °C | `p_min_przyrost` |
+
+- `poczatek` = najniższy odczyt grzejnika w oknie, w którym spełniono warunek startu (ostatni odczyt przed wzrostem),
+  `szczyt` = maksimum temperatury przy grzejniku w okresie.
+- Okres niezakończony na końcu danych ma `trwa = true` i jest domykany przy następnym przeliczeniu.
+- Przeliczenie od `p_od` wykrywa okresy od nowa z marginesem 6 h (i od początku okresu nachodzącego na zakres);
+  okresy z tego zakresu, których nie wykryto ponownie, są usuwane.
+- Parę czujników ustawia wywołanie w `przelicz_srednie()`; wynik nie wlicza się do zwracanej liczby wierszy.
+
+| Kolumna | Znaczenie |
+|---|---|
+| `device_id` | czujnik przy grzejniku |
+| `device_id_odniesienia` | czujnik w tym samym pomieszczeniu |
+| `poczatek`, `szczyt` | włączenie grzejnika i maksimum temperatury przy nim |
+| `temp_poczatek`, `temp_szczyt` | temperatura przy grzejniku w tych chwilach |
+| `temp_odn_poczatek`, `temp_odn_szczyt` | temperatura czujnika odniesienia w tych chwilach |
+| `trwa` | temperatura wciąż rosła na końcu danych |
+| `przeliczono_at` | czas ostatniego przeliczenia |
+
+Klucz główny: `(device_id, poczatek)`.
 
 ## Kiedy liczone
 

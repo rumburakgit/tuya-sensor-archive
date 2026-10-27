@@ -375,6 +375,15 @@ begin
         'va_temperature', v_od, p_do
     );
 
+    -- Okresy grzania w kuchni: Temp Grzejnik względem Temp Kuchnias
+    -- (definicja: 002_heating_periods.sql; wyniki w heating_periods,
+    -- nie wliczane do zwracanej liczby wierszy sensor_aggregates).
+    perform wykryj_okresy_grzania(
+        'bf333171b6295a9253wx0y',
+        'bf09f3b9302d16a74froza',
+        p_od, p_do
+    );
+
     return v_liczba;
 end;
 $$;

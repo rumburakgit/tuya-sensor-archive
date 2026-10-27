@@ -58,6 +58,10 @@ ROZNICE = [
     ),
 ]
 
+# Czujnik przy grzejniku, dla którego wykrywane są okresy grzania
+# (tabela heating_periods, analityka/002_heating_periods.sql).
+GRZEJNIK_DEVICE_ID = "bf333171b6295a9253wx0y"
+
 HTML = """
 <!doctype html>
 <html lang="pl">
@@ -297,6 +301,7 @@ input[type="datetime-local"] {
       <div class="chart-wrap">
         <canvas id="tempChart"></canvas>
       </div>
+      <div id="grzanieInfo" class="small">{{ blad_grzania or '' }}</div>
     </div>
 
     <div class="chart-card">
@@ -337,6 +342,7 @@ const hums = {{ historia_hum | safe }};
 const jasionka = {{ historia_jasionka | safe }};
 const srednie = {{ historia_srednie | safe }};
 const roznice = {{ historia_roznice | safe }};
+let okresyGrzania = {{ okresy_grzania | safe }};
 const chartInstances = {};
 let currentDurationHours = 48;
 
@@ -461,6 +467,8 @@ async function loadRange() {
     document.getElementById('srednieInfo').textContent = dane.blad_srednich || '';
     chartInstances.roznicaChart.data.datasets = dane.roznice;
     document.getElementById('roznicaInfo').textContent = dane.blad_roznic || '';
+    okresyGrzania = dane.okresy_grzania;
+    document.getElementById('grzanieInfo').textContent = opisGrzania(dane.blad_grzania);
 
     for (const id in chartInstances) {
       chartInstances[id].resetZoom('none');
@@ -504,10 +512,68 @@ function resetCharts() {
   setRange(48, buttonByLabel('48h'));
 }
 
-function makeChart(id, datasets, unit) {
+const KOLOR_GRZANIA = 'rgba(234, 88, 12, ';
+
+// Okresy grzania: kreska w chwili włączenia grzejnika, pas do szczytu
+// temperatury i przerywana kreska w szczycie (brak, gdy okres trwa).
+const wtyczkaGrzania = {
+  id: 'okresyGrzania',
+  beforeDatasetsDraw(chart, args, opcje) {
+    if (!opcje.pokaz || !okresyGrzania.length) return;
+
+    const { ctx, chartArea: obszar, scales: { x } } = chart;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(obszar.left, obszar.top, obszar.width, obszar.height);
+    ctx.clip();
+
+    for (const okres of okresyGrzania) {
+      const x1 = x.getPixelForValue(okres.od);
+      const x2 = x.getPixelForValue(okres.do);
+      if (x2 < obszar.left || x1 > obszar.right) continue;
+
+      ctx.fillStyle = KOLOR_GRZANIA + '0.12)';
+      ctx.fillRect(x1, obszar.top, Math.max(x2 - x1, 1), obszar.height);
+
+      ctx.strokeStyle = KOLOR_GRZANIA + '0.9)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(x1, obszar.top);
+      ctx.lineTo(x1, obszar.bottom);
+      ctx.stroke();
+
+      if (!okres.trwa) {
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(x2, obszar.top);
+        ctx.lineTo(x2, obszar.bottom);
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = KOLOR_GRZANIA + '1)';
+      ctx.font = '11px system-ui, sans-serif';
+      ctx.fillText('grzejnik', x1 + 3, obszar.top + 12);
+    }
+
+    ctx.restore();
+  }
+};
+
+function opisGrzania(blad) {
+  if (blad) return blad;
+  if (!okresyGrzania.length) return 'Brak wykrytych okresów grzania w zakresie.';
+  return 'Pomarańczowe pasy: okresy grzania grzejnika w kuchni '
+    + '(od włączenia do szczytu temperatury) · w zakresie: '
+    + okresyGrzania.length;
+}
+
+function makeChart(id, datasets, unit, pokazGrzanie = false) {
   chartInstances[id] = new Chart(document.getElementById(id), {
     type: 'line',
     data: { datasets: datasets },
+    plugins: [wtyczkaGrzania],
     options: {
       responsive: true,
       maintainAspectRatio: false,
@@ -548,6 +614,9 @@ function makeChart(id, datasets, unit) {
         }
       },
       plugins: {
+        okresyGrzania: {
+          pokaz: pokazGrzanie
+        },
         zoom: {
           pan: {
             enabled: true,
@@ -581,11 +650,13 @@ function makeChart(id, datasets, unit) {
   });
 }
 
-makeChart('tempChart', temps, 'Temperatura (°C)');
+makeChart('tempChart', temps, 'Temperatura (°C)', true);
 makeChart('humChart', hums, 'Wilgotność (%)');
 makeChart('jasionkaChart', jasionka, 'Temperatura (°C)');
-makeChart('srednieChart', srednie, 'Temperatura (°C)');
-makeChart('roznicaChart', roznice, 'Różnica temperatur (°C)');
+makeChart('srednieChart', srednie, 'Temperatura (°C)', true);
+makeChart('roznicaChart', roznice, 'Różnica temperatur (°C)', true);
+document.getElementById('grzanieInfo').textContent =
+  opisGrzania({{ blad_grzania | tojson }});
 </script>
 
 {% endif %}
@@ -755,6 +826,51 @@ def srednie_lub_blad(serie, poczatek_iso=None, koniec_iso=None):
         )
 
 
+def pobierz_okresy_grzania(poczatek_iso=None, koniec_iso=None):
+    """Okresy grzania nachodzące na zakres; bez poczatek_iso — od najstarszego."""
+    zapytanie = (
+        supabase.table("heating_periods")
+        .select("poczatek,szczyt,trwa")
+        .eq("device_id", GRZEJNIK_DEVICE_ID)
+    )
+
+    if poczatek_iso:
+        zapytanie = zapytanie.gte("szczyt", poczatek_iso)
+    if koniec_iso:
+        zapytanie = zapytanie.lte("poczatek", koniec_iso)
+
+    # Okres grzania trwa godzinę-dwie, więc 1000 wierszy wystarczy
+    # na lata historii.
+    wynik = (
+        zapytanie
+        .order("poczatek")
+        .limit(PAGE_SIZE)
+        .execute()
+    )
+
+    return [
+        {
+            "od": iso_na_ms(r["poczatek"]),
+            "do": iso_na_ms(r["szczyt"]),
+            "trwa": r["trwa"],
+        }
+        for r in wynik.data or []
+    ]
+
+
+def okresy_grzania_lub_blad(poczatek_iso=None, koniec_iso=None):
+    """Brak okresów grzania nie może zablokować reszty dashboardu."""
+    try:
+        return pobierz_okresy_grzania(poczatek_iso, koniec_iso), None
+    except Exception as exc:
+        app.logger.exception("Błąd odczytu heating_periods")
+        return [], (
+            "Nie udało się wczytać okresów grzania z heating_periods "
+            "(czy wdrożono analityka/002_heating_periods.sql?): "
+            f"{exc}"
+        )
+
+
 def przygotuj_widok(rekordy, teraz):
     ostatnie = {}
     temp_datasets = []
@@ -903,6 +1019,9 @@ def home():
         historia_roznice, blad_roznic = srednie_lub_blad(
             ROZNICE, poczatek.isoformat()
         )
+        okresy_grzania, blad_grzania = okresy_grzania_lub_blad(
+            poczatek.isoformat()
+        )
 
         return render_template_string(
             HTML,
@@ -914,6 +1033,8 @@ def home():
             blad_srednich=blad_srednich,
             historia_roznice=json.dumps(historia_roznice),
             blad_roznic=blad_roznic,
+            okresy_grzania=json.dumps(okresy_grzania),
+            blad_grzania=blad_grzania,
             liczba_rekordow=len(rekordy),
             czas_odswiezenia=teraz.astimezone().strftime(
                 "%d.%m.%Y %H:%M:%S"
@@ -936,6 +1057,8 @@ def home():
             blad_srednich=None,
             historia_roznice="[]",
             blad_roznic=None,
+            okresy_grzania="[]",
+            blad_grzania=None,
             liczba_rekordow=0,
             czas_odswiezenia=teraz.astimezone().strftime(
                 "%d.%m.%Y %H:%M:%S"
@@ -969,6 +1092,7 @@ def api_historia():
 
     historia_srednie, blad_srednich = srednie_lub_blad(SREDNIE, od_iso, do_iso)
     historia_roznice, blad_roznic = srednie_lub_blad(ROZNICE, od_iso, do_iso)
+    okresy_grzania, blad_grzania = okresy_grzania_lub_blad(od_iso, do_iso)
 
     if od_ms is None:
         od_ms = min(
@@ -984,6 +1108,8 @@ def api_historia():
         "blad_srednich": blad_srednich,
         "roznice": historia_roznice,
         "blad_roznic": blad_roznic,
+        "okresy_grzania": okresy_grzania,
+        "blad_grzania": blad_grzania,
         "liczba_rekordow": len(rekordy),
         "poczatek_ms": od_ms,
     })
