@@ -27,9 +27,14 @@ except Exception:
     # Brak pliku sekretów (np. lokalnie) — zostaje .env.
     nazwy_sekretow = []
 
-for nazwa in ("SUPABASE_URL", "SUPABASE_ANON_KEY"):
-    if nazwa in nazwy_sekretow and not os.environ.get(nazwa):
-        os.environ[nazwa] = str(st.secrets[nazwa])
+# (zmienna środowiskowa, nazwy w Secrets — SUPABASE_KEY to popularna nazwa klucza anon)
+for nazwa, nazwy_w_sekretach in (
+    ("SUPABASE_URL", ("SUPABASE_URL",)),
+    ("SUPABASE_ANON_KEY", ("SUPABASE_ANON_KEY", "SUPABASE_KEY")),
+):
+    for nazwa_w_sekretach in nazwy_w_sekretach:
+        if nazwa_w_sekretach in nazwy_sekretow and not os.environ.get(nazwa):
+            os.environ[nazwa] = str(st.secrets[nazwa_w_sekretach])
 
 if not os.environ.get("SUPABASE_URL") or not (
     os.environ.get("SUPABASE_ANON_KEY")

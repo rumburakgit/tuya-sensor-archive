@@ -95,5 +95,5 @@ Wdrożenie w [Streamlit Community Cloud](https://share.streamlit.io):
    SUPABASE_ANON_KEY = "<klucz anon>"
    ```
 
-   Nie wpisywać tam klucza `service_role`.
+   Nie wpisywać tam klucza `service_role`. Zamiast `SUPABASE_ANON_KEY` można użyć nazwy `SUPABASE_KEY`.
 4. Aplikacja jest domyślnie publiczna; dostęp można ograniczyć w ustawieniach aplikacji (**Sharing**) do zaproszonych adresów e-mail.
