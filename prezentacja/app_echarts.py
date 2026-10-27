@@ -2,8 +2,8 @@
 Wykresy temperatury z archiwum Supabase w Apache ECharts.
 
 Te same dane co app_archive.py (z niego pochodzą funkcje odczytu),
-ale tylko trzy wykresy temperatury: czujniki w mieszkaniu,
-Jasionka (METAR) i średnie z sensor_aggregates.
+ale tylko cztery wykresy temperatury: czujniki w mieszkaniu,
+Jasionka (METAR), średnie i różnica średnich z sensor_aggregates.
 
 Uruchomienie:
     ./.venv/bin/python3 prezentacja/app_echarts.py   # http://127.0.0.1:5002
@@ -171,6 +171,12 @@ input[type="datetime-local"] {
   <h3>📊 Średnie temperatury — mieszkanie i Jasionka</h3>
   <div id="srednieChart" class="chart-wrap"></div>
   <div id="srednieInfo" class="small"></div>
+</div>
+
+<div class="chart-card">
+  <h3>↕️ Różnica temperatur — mieszkanie − Jasionka</h3>
+  <div id="roznicaChart" class="chart-wrap"></div>
+  <div id="roznicaInfo" class="small"></div>
 </div>
 
 <script>
@@ -352,9 +358,14 @@ async function loadRange() {
     if (srednie.length) Object.assign(srednie[0], grzanie);
     ustawSerie('srednieChart', srednie, start, endMs);
 
+    const roznice = naSerie(dane.roznice, true);
+    if (roznice.length) Object.assign(roznice[0], grzanie);
+    ustawSerie('roznicaChart', roznice, start, endMs);
+
     document.getElementById('grzanieInfo').textContent =
       opisGrzania(dane.okresy_grzania, dane.blad_grzania);
     document.getElementById('srednieInfo').textContent = dane.blad_srednich || '';
+    document.getElementById('roznicaInfo').textContent = dane.blad_roznic || '';
     document.getElementById('recordCount').textContent = dane.liczba_rekordow;
     status.textContent = '';
   } catch (exc) {
@@ -424,6 +435,7 @@ function przesunZakres(kierunek) {
 makeChart('tempChart');
 makeChart('jasionkaChart');
 makeChart('srednieChart');
+makeChart('roznicaChart');
 // Przybliżanie i przesuwanie myszą działa na wszystkich wykresach naraz.
 echarts.connect('temperatury');
 window.addEventListener('resize', () => {
@@ -444,7 +456,7 @@ def home():
 
 @app.route("/api/historia")
 def api_historia():
-    """Dane trzech wykresów temperatury dla zakresu od/do (ms); bez od — cała historia."""
+    """Dane czterech wykresów temperatury dla zakresu od/do (ms); bez od — cała historia."""
     od_ms = request.args.get("od", type=int)
     do_ms = request.args.get("do", type=int)
     teraz_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
@@ -465,6 +477,9 @@ def api_historia():
     historia_srednie, blad_srednich = app_archive.srednie_lub_blad(
         app_archive.SREDNIE, od_iso, do_iso
     )
+    historia_roznice, blad_roznic = app_archive.srednie_lub_blad(
+        app_archive.ROZNICE, od_iso, do_iso
+    )
     okresy_grzania, blad_grzania = app_archive.okresy_grzania_lub_blad(
         od_iso, do_iso
     )
@@ -480,6 +495,8 @@ def api_historia():
         "jasionka": historia_jasionka,
         "srednie": historia_srednie,
         "blad_srednich": blad_srednich,
+        "roznice": historia_roznice,
+        "blad_roznic": blad_roznic,
         "okresy_grzania": okresy_grzania,
         "blad_grzania": blad_grzania,
         "liczba_rekordow": len(rekordy),

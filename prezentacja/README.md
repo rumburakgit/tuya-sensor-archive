@@ -56,9 +56,10 @@ Można go też uruchomić bez panelu:
 
 ## `app_echarts.py` — wykresy temperatury w Apache ECharts (port 5002)
 
-Te same dane co `app_archive.py` (korzysta z jego funkcji odczytu i list `DEVICES`, `SREDNIE`),
-ale tylko trzy wykresy temperatury: **Temperatura** (czujniki w mieszkaniu, z okresami grzania),
-**Temperatura — Jasionka** i **Średnie temperatury** (z okresami grzania), narysowane w Apache ECharts.
+Te same dane co `app_archive.py` (korzysta z jego funkcji odczytu i list `DEVICES`, `SREDNIE`, `ROZNICE`),
+ale tylko cztery wykresy temperatury: **Temperatura** (czujniki w mieszkaniu), **Temperatura — Jasionka**,
+**Średnie temperatury** i **Różnica temperatur**, narysowane w Apache ECharts.
+Okresy grzania są zaznaczone na wszystkich poza wykresem Jasionki.
 
 - Te same przyciski zakresu co w `app_archive.py`, łącznie ze strzałkami przesuwającymi o 12h.
 - Przybliżanie kółkiem myszy, przeciąganie i suwak pod wykresem; wykresy są połączone, więc przybliżenie działa na wszystkich naraz.
