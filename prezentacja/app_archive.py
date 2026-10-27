@@ -278,13 +278,12 @@ input[type="datetime-local"] {
   </div>
 
   <span style="align-self: center; font-weight: 600; font-size: 14px; margin-left: 8px; margin-right: 4px;">Czas trwania:</span>
-  <button class="btn" onclick="setRange(1, this)">1h</button>
   <button class="btn" onclick="setRange(2, this)">2h</button>
-  <button class="btn" onclick="setRange(3, this)">3h</button>
   <button class="btn" onclick="setRange(6, this)">6h</button>
   <button class="btn" onclick="setRange(12, this)">12h</button>
   <button class="btn" onclick="setRange(24, this)">24h</button>
   <button class="btn active" onclick="setRange(48, this)">48h</button>
+  <button class="btn" onclick="setRange(7 * 24, this)">7 dni</button>
   <button class="btn" onclick="showAll(this)">Cała historia</button>
   <button class="btn" onclick="resetCharts()" style="margin-left: auto;">Reset / Teraz</button>
 </div>
