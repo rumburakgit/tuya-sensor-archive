@@ -27,12 +27,17 @@ from tkinter.scrolledtext import ScrolledText
 
 BASE_DIR = Path(__file__).resolve().parent
 
-# Kolejne sposoby prezentacji (ECharts, Grafana...) dopisujemy tutaj.
+# Kolejne sposoby prezentacji (np. Grafana) dopisujemy tutaj.
 PREZENTACJE = [
     {
         "nazwa": "Dashboard Supabase",
         "skrypt": "app_archive.py",
         "port": 5001,
+    },
+    {
+        "nazwa": "Wykresy ECharts",
+        "skrypt": "app_echarts.py",
+        "port": 5002,
     },
 ]
 

@@ -25,7 +25,7 @@ Okno z listą sposobów prezentacji. Dla każdego:
 - **Otwórz w przeglądarce** — aktywny, gdy serwer działa (przy pierwszym starcie strona otwiera się sama).
 
 Logi serwerów są wyświetlane w konsoli panelu. Zamknięcie okna zatrzymuje wszystkie serwery.
-Kolejne prezentacje (ECharts, Grafana...) dodaje się jako nowe pozycje listy `PREZENTACJE` w `panel.py`.
+Kolejne prezentacje (np. Grafana) dodaje się jako nowe pozycje listy `PREZENTACJE` w `panel.py`.
 
 ## `app_archive.py` — dashboard z Supabase (port 5001)
 
@@ -52,4 +52,18 @@ Można go też uruchomić bez panelu:
 
 ```bash
 ./.venv/bin/python3 prezentacja/app_archive.py
+```
+
+## `app_echarts.py` — wykresy temperatury w Apache ECharts (port 5002)
+
+Te same dane co `app_archive.py` (korzysta z jego funkcji odczytu i list `DEVICES`, `SREDNIE`),
+ale tylko trzy wykresy temperatury: **Temperatura** (czujniki w mieszkaniu, z okresami grzania),
+**Temperatura — Jasionka** i **Średnie temperatury** (z okresami grzania), narysowane w Apache ECharts.
+
+- Te same przyciski zakresu co w `app_archive.py`, łącznie ze strzałkami przesuwającymi o 12h.
+- Przybliżanie kółkiem myszy, przeciąganie i suwak pod wykresem; wykresy są połączone, więc przybliżenie działa na wszystkich naraz.
+- Działa pod adresem `http://127.0.0.1:5002`.
+
+```bash
+./.venv/bin/python3 prezentacja/app_echarts.py
 ```
