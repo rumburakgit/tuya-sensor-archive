@@ -122,6 +122,11 @@ h1 { margin-bottom: 4px; }
   border-color: #2563eb;
 }
 
+.btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 .custom-time {
   display: flex;
   align-items: center;
@@ -289,6 +294,8 @@ input[type="datetime-local"] {
   <button class="btn active" onclick="setRange(48, this)">48h</button>
   <button class="btn" onclick="setRange(7 * 24, this)">7 dni</button>
   <button class="btn" onclick="showAll(this)">Cała historia</button>
+  <button class="btn przesun" onclick="przesunZakres(-1)" title="12 godzin wcześniej">◀ 12h</button>
+  <button class="btn przesun" onclick="przesunZakres(1)" title="12 godzin później">12h ▶</button>
   <button class="btn" onclick="resetCharts()" style="margin-left: auto;">Reset / Teraz</button>
 </div>
 
@@ -499,6 +506,37 @@ function updateCustomRange() {
 function setRange(hours, btn) {
   currentDurationHours = hours;
   setActiveButton(btn);
+  // Przesuwanie nie ma sensu dla całej historii.
+  document.querySelectorAll('.przesun').forEach(b => b.disabled = hours === null);
+  loadRange();
+}
+
+const KROK_PRZESUNIECIA_MS = 12 * GODZINA_MS;
+
+// Wartość dla <input type="datetime-local"> w czasie lokalnym.
+function naDatetimeLocal(ms) {
+  const d = new Date(ms);
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 16);
+}
+
+// Przesuwa zakres o 12 h (kierunek -1 = wcześniej, 1 = później),
+// zachowując czas trwania. Zakres sięgający teraźniejszości wraca
+// do trybu "do teraz" (puste pole Start).
+function przesunZakres(kierunek) {
+  if (currentDurationHours === null) return;
+
+  const picker = document.getElementById('startTimePicker');
+  const [startMs] = currentRange();
+  const nowyStart = startMs + kierunek * KROK_PRZESUNIECIA_MS;
+
+  // Tolerancja minuty: pole Start ma dokładność do minut.
+  if (nowyStart + currentDurationHours * GODZINA_MS >= Date.now() - 60000) {
+    picker.value = '';
+  } else {
+    picker.value = naDatetimeLocal(nowyStart);
+  }
+
   loadRange();
 }
 
