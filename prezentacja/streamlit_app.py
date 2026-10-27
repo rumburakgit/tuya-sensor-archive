@@ -8,12 +8,32 @@ Uruchomienie lokalne:
 """
 
 import json
+import os
 from datetime import datetime, timezone
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import streamlit as st
+from dotenv import load_dotenv
 
-import app_echarts
+# Lokalnie klucze są w prezentacja/.env; w Streamlit Cloud sekrety
+# z najwyższego poziomu (bez [sekcji]) trafiają do zmiennych środowiskowych.
+load_dotenv(Path(__file__).resolve().parent / ".env")
+
+if not os.environ.get("SUPABASE_URL") or not (
+    os.environ.get("SUPABASE_ANON_KEY")
+    or os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+):
+    st.error(
+        "Brak konfiguracji Supabase. W Streamlit Cloud: Settings → Secrets, "
+        "na najwyższym poziomie (bez nagłówka [sekcji]):\n\n"
+        '`SUPABASE_URL = "https://<id-projektu>.supabase.co"`\n\n'
+        '`SUPABASE_ANON_KEY = "sb_publishable_..."`\n\n'
+        "Po zapisaniu: Reboot app."
+    )
+    st.stop()
+
+import app_echarts  # noqa: E402 — wymaga zmiennych sprawdzonych wyżej
 
 
 GODZINA_MS = 3600000
