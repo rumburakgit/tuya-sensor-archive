@@ -44,7 +44,7 @@ Podstawowa prezentacja: lokalny dashboard Flask + Chart.js.
   a reszta dashboardu działa normalnie.
 - Okresy grzania z tabeli `heating_periods` są zaznaczone na wykresach temperatury, średnich i różnicy:
   ciągła pomarańczowa kreska w chwili włączenia grzejnika, pas do szczytu temperatury i przerywana kreska
-  w szczycie (brak jej, gdy okres jeszcze trwa). Czujnik grzejnika: `GRZEJNIK_DEVICE_ID` w `app_archive.py`.
+  w szczycie (brak jej, gdy okres jeszcze trwa); drobne włączenia — bledszy pas i przerywana kreska z podpisem „drobne”. Czujnik grzejnika: `GRZEJNIK_DEVICE_ID` w `app_archive.py`.
   Brak tabeli działa jak wyżej — komunikat pod wykresem temperatury.
 - Działa pod adresem `http://127.0.0.1:5001`.
 

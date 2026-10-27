@@ -516,6 +516,7 @@ const KOLOR_GRZANIA = 'rgba(234, 88, 12, ';
 
 // Okresy grzania: kreska w chwili włączenia grzejnika, pas do szczytu
 // temperatury i przerywana kreska w szczycie (brak, gdy okres trwa).
+// Drobne włączenia: bledszy pas i przerywana kreska włączenia.
 const wtyczkaGrzania = {
   id: 'okresyGrzania',
   beforeDatasetsDraw(chart, args, opcje) {
@@ -532,12 +533,14 @@ const wtyczkaGrzania = {
       const x2 = x.getPixelForValue(okres.do);
       if (x2 < obszar.left || x1 > obszar.right) continue;
 
-      ctx.fillStyle = KOLOR_GRZANIA + '0.12)';
+      const drobne = okres.rodzaj === 'drobne';
+
+      ctx.fillStyle = KOLOR_GRZANIA + (drobne ? '0.06)' : '0.12)');
       ctx.fillRect(x1, obszar.top, Math.max(x2 - x1, 1), obszar.height);
 
-      ctx.strokeStyle = KOLOR_GRZANIA + '0.9)';
-      ctx.lineWidth = 2;
-      ctx.setLineDash([]);
+      ctx.strokeStyle = KOLOR_GRZANIA + (drobne ? '0.6)' : '0.9)');
+      ctx.lineWidth = drobne ? 1.5 : 2;
+      ctx.setLineDash(drobne ? [6, 3] : []);
       ctx.beginPath();
       ctx.moveTo(x1, obszar.top);
       ctx.lineTo(x1, obszar.bottom);
@@ -554,7 +557,7 @@ const wtyczkaGrzania = {
 
       ctx.fillStyle = KOLOR_GRZANIA + '1)';
       ctx.font = '11px system-ui, sans-serif';
-      ctx.fillText('grzejnik', x1 + 3, obszar.top + 12);
+      ctx.fillText(drobne ? 'drobne' : 'grzejnik', x1 + 3, obszar.top + 12);
     }
 
     ctx.restore();
@@ -564,9 +567,10 @@ const wtyczkaGrzania = {
 function opisGrzania(blad) {
   if (blad) return blad;
   if (!okresyGrzania.length) return 'Brak wykrytych okresów grzania w zakresie.';
+  const drobnych = okresyGrzania.filter(o => o.rodzaj === 'drobne').length;
   return 'Pomarańczowe pasy: okresy grzania grzejnika w kuchni '
-    + '(od włączenia do szczytu temperatury) · w zakresie: '
-    + okresyGrzania.length;
+    + '(od włączenia do szczytu temperatury; bledsze — drobne włączenia) · w zakresie: '
+    + (okresyGrzania.length - drobnych) + ' wyraźnych, ' + drobnych + ' drobnych';
 }
 
 function makeChart(id, datasets, unit, pokazGrzanie = false) {
@@ -830,7 +834,7 @@ def pobierz_okresy_grzania(poczatek_iso=None, koniec_iso=None):
     """Okresy grzania nachodzące na zakres; bez poczatek_iso — od najstarszego."""
     zapytanie = (
         supabase.table("heating_periods")
-        .select("poczatek,szczyt,trwa")
+        .select("poczatek,szczyt,trwa,rodzaj")
         .eq("device_id", GRZEJNIK_DEVICE_ID)
     )
 
@@ -853,6 +857,7 @@ def pobierz_okresy_grzania(poczatek_iso=None, koniec_iso=None):
             "od": iso_na_ms(r["poczatek"]),
             "do": iso_na_ms(r["szczyt"]),
             "trwa": r["trwa"],
+            "rodzaj": r["rodzaj"],
         }
         for r in wynik.data or []
     ]

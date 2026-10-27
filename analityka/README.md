@@ -70,11 +70,13 @@ Klucz główny: `(seria, code, okres, metoda, poczatek)` — przeliczenie nadpis
 ## Okresy grzania (`heating_periods`)
 
 Wykrywa chwile włączenia grzejnika w kuchni: czujnik **Temp Grzejnik** (`bf333171b6295a9253wx0y`)
-zaczyna szybko rosnąć, a **Temp Kuchnias** (`bf09f3b9302d16a74froza`) rośnie wyraźnie wolniej
-i dołącza z opóźnieniem. Słońce ogrzewa całe pomieszczenie — oba czujniki rosną wtedy wolno
-i podobnie, więc taki wzrost nie jest okresem grzania.
+zaczyna rosnąć, a **Temp Kuchnias** (`bf09f3b9302d16a74froza`) rośnie wyraźnie wolniej
+i dołącza z opóźnieniem albo nie rośnie wcale. Słońce ogrzewa całe pomieszczenie — oba czujniki rosną wtedy
+podobnie, więc taki wzrost nie jest okresem grzania.
 
-Funkcja `wykryj_okresy_grzania()` dla każdego odczytu czujnika przy grzejniku liczy prędkość wzrostu
+Funkcja `wykryj_okresy_grzania()` zapisuje dwa rodzaje okresów (kolumna `rodzaj`).
+
+**`wyrazne`** — dla każdego odczytu czujnika przy grzejniku liczy prędkość wzrostu
 (°C/h) obu czujników w oknie 30 min wstecz:
 
 | Warunek | Domyślnie | Parametr |
@@ -84,7 +86,18 @@ Funkcja `wykryj_okresy_grzania()` dla każdego odczytu czujnika przy grzejniku l
 | koniec: prędkość grzejnika ≤ 0 (przestał rosnąć) albo przerwa w danych > 2 × okno | — | `p_okno` |
 | okres zapisywany, gdy przyrost przy grzejniku ≥ | 2,0 °C | `p_min_przyrost` |
 
-- `poczatek` = najniższy odczyt grzejnika w oknie, w którym spełniono warunek startu (ostatni odczyt przed wzrostem),
+**`drobne`** — krótkie włączenie, przy którym grzejnik podnosi temperaturę o ułamek stopnia, a kuchnia stoi
+(np. 22.10 20:25–21:39: grzejnik 21,9 → 22,6 °C, kuchnia 20,4 °C bez zmian). Przebieg grzejnika dzielony jest
+na wzrosty od dołka do szczytu; kierunek zmienia się dopiero po zmianie o 0,2 °C (`p_drobne_zawracanie`),
+więc wahnięcie o 0,1 °C nie przerywa wzrostu. Wzrost jest drobnym okresem, gdy:
+
+| Warunek | Domyślnie | Parametr |
+|---|---|---|
+| przyrost przy grzejniku (dołek → szczyt) ≥ | 0,5 °C | `p_drobne_przyrost` |
+| temperatura kuchni w szczycie ≤ temperatura kuchni na początku | — | — |
+| nie nachodzi na okres `wyrazne` | — | — |
+
+- `poczatek` = ostatni odczyt grzejnika przed wzrostem (dla `wyrazne`: najniższy w oknie, w którym spełniono warunek startu),
   `szczyt` = maksimum temperatury przy grzejniku w okresie.
 - Okres niezakończony na końcu danych ma `trwa = true` i jest domykany przy następnym przeliczeniu.
 - Przeliczenie od `p_od` wykrywa okresy od nowa z marginesem 6 h (i od początku okresu nachodzącego na zakres);
@@ -99,6 +112,7 @@ Funkcja `wykryj_okresy_grzania()` dla każdego odczytu czujnika przy grzejniku l
 | `temp_poczatek`, `temp_szczyt` | temperatura przy grzejniku w tych chwilach |
 | `temp_odn_poczatek`, `temp_odn_szczyt` | temperatura czujnika odniesienia w tych chwilach |
 | `trwa` | temperatura wciąż rosła na końcu danych |
+| `rodzaj` | `wyrazne`, `drobne` |
 | `przeliczono_at` | czas ostatniego przeliczenia |
 
 Klucz główny: `(device_id, poczatek)`.
