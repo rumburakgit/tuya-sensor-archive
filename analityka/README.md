@@ -87,14 +87,16 @@ Funkcja `wykryj_okresy_grzania()` zapisuje dwa rodzaje okresów (kolumna `rodzaj
 | okres zapisywany, gdy przyrost przy grzejniku ≥ | 2,0 °C | `p_min_przyrost` |
 
 **`drobne`** — krótkie włączenie, przy którym grzejnik podnosi temperaturę o ułamek stopnia, a kuchnia stoi
-(np. 22.10 20:25–21:39: grzejnik 21,9 → 22,6 °C, kuchnia 20,4 °C bez zmian). Przebieg grzejnika dzielony jest
+(np. 22.10 20:25–21:39: grzejnik 21,9 → 22,6 °C, kuchnia 20,4 °C bez zmian), albo powolne grzanie poniżej
+progu prędkości `wyrazne`, przy którym kuchnia dogrzewa się tylko trochę (np. 10.11 4:05–6:58: grzejnik
+7,1 → 9,2 °C, maks. 1,38 °C/h; kuchnia 7,8 → 8,1 °C). Przebieg grzejnika dzielony jest
 na wzrosty od dołka do szczytu; kierunek zmienia się dopiero po zmianie o 0,2 °C (`p_drobne_zawracanie`),
 więc wahnięcie o 0,1 °C nie przerywa wzrostu. Wzrost jest drobnym okresem, gdy:
 
 | Warunek | Domyślnie | Parametr |
 |---|---|---|
 | przyrost przy grzejniku (dołek → szczyt) ≥ | 0,5 °C | `p_drobne_przyrost` |
-| temperatura kuchni w szczycie ≤ temperatura kuchni na początku | — | — |
+| przyrost kuchni (początek → szczyt) ≤ udział × przyrost przy grzejniku | 0,25 | `p_drobne_udzial_odn` |
 | nie nachodzi na okres `wyrazne` | — | — |
 
 - `poczatek` = ostatni odczyt grzejnika przed wzrostem (dla `wyrazne`: najniższy w oknie, w którym spełniono warunek startu),

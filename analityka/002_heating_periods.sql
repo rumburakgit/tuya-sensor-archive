@@ -17,8 +17,9 @@
 -- Rodzaje okresów:
 --   wyrazne — szybki wzrost przy grzejniku (kilka °C), pomieszczenie
 --             dogrzewa się wolniej;
---   drobne  — krótkie włączenie: przy grzejniku wzrost o ułamek
---             stopnia, pomieszczenie w tym czasie nie rośnie.
+--   drobne  — krótkie albo powolne włączenie: przy grzejniku wzrost
+--             od dołka do szczytu, pomieszczenie w tym czasie rośnie
+--             co najwyżej o niewielką część tego przyrostu.
 
 
 -- --------------------------------------------------
@@ -121,6 +122,11 @@ $$;
 -- chwili nie są przeliczane, więc liczą się także bez świeżego zapisu.
 -- Zwraca 1, gdy zapisano okres, inaczej 0.
 
+-- Poprzednia wersja (pomieszczenie nie mogło rosnąć) miała inną sygnaturę.
+drop function if exists public.zapisz_drobny_okres(
+    text, text, timestamptz, bigint, numeric, bigint, numeric, boolean, numeric
+);
+
 create or replace function public.zapisz_drobny_okres(
     p_device_id text,
     p_device_id_odn text,
@@ -130,7 +136,8 @@ create or replace function public.zapisz_drobny_okres(
     p_szczyt_ms bigint,
     p_szczyt_t numeric,
     p_trwa boolean,
-    p_min_przyrost numeric
+    p_min_przyrost numeric,
+    p_udzial_odn numeric
 )
 returns integer
 language plpgsql
@@ -141,9 +148,12 @@ begin
         return 0;
     end if;
 
-    -- Pomieszczenie w tym czasie nie może rosnąć.
+    -- Pomieszczenie może w tym czasie rosnąć najwyżej o p_udzial_odn
+    -- przyrostu przy grzejniku (przy dłuższym grzaniu dogrzewa się od
+    -- grzejnika; słońce podnosi oba czujniki podobnie).
     if (select wartosc from ostatnia_temperatura(p_device_id_odn, p_szczyt_ms))
-       > (select wartosc from ostatnia_temperatura(p_device_id_odn, p_start_ms))
+       - (select wartosc from ostatnia_temperatura(p_device_id_odn, p_start_ms))
+       > p_udzial_odn * (p_szczyt_t - p_start_t)
        or (select wartosc from ostatnia_temperatura(p_device_id_odn, p_start_ms)) is null then
         return 0;
     end if;
@@ -186,16 +196,20 @@ $$;
 -- o p_drobne_zawracanie, więc pojedyncze wahnięcia o 0,1 °C nie
 -- przerywają wzrostu). Wzrost jest drobnym okresem, gdy:
 --     przyrost przy grzejniku >= p_drobne_przyrost
---     temperatura odniesienia w szczycie <= temperatura na początku
+--     przyrost odniesienia <= p_drobne_udzial_odn * przyrost przy grzejniku
 --     nie nachodzi na wyraźny okres
 --
 -- Okresy w zakresie są wykrywane od nowa (z marginesem 6 h
 -- i od początku okresu, który nachodzi na zakres).
 -- Zwraca liczbę zapisanych okresów.
 
--- Pierwsza wersja (bez wykrywania drobnych okresów) miała inną sygnaturę.
+-- Poprzednie wersje (bez drobnych okresów; bez p_drobne_udzial_odn)
+-- miały inne sygnatury.
 drop function if exists public.wykryj_okresy_grzania(
     text, text, timestamptz, timestamptz, interval, numeric, numeric, numeric
+);
+drop function if exists public.wykryj_okresy_grzania(
+    text, text, timestamptz, timestamptz, interval, numeric, numeric, numeric, numeric, numeric
 );
 
 create or replace function public.wykryj_okresy_grzania(
@@ -208,7 +222,8 @@ create or replace function public.wykryj_okresy_grzania(
     p_prog_przewagi numeric default 1.0,
     p_min_przyrost numeric default 2.0,
     p_drobne_przyrost numeric default 0.5,
-    p_drobne_zawracanie numeric default 0.2
+    p_drobne_zawracanie numeric default 0.2,
+    p_drobne_udzial_odn numeric default 0.25
 )
 returns integer
 language plpgsql
@@ -354,7 +369,8 @@ begin
         elsif r.tg <= v_max_t - p_drobne_zawracanie then
             v_liczba := v_liczba + zapisz_drobny_okres(
                 p_device_id, p_device_id_odn, v_od - p_okno,
-                v_start_ms, v_start_t, v_max_ms, v_max_t, false, p_drobne_przyrost
+                v_start_ms, v_start_t, v_max_ms, v_max_t, false, p_drobne_przyrost,
+                p_drobne_udzial_odn
             );
             v_rosnie := false;
             v_start_ms := r.t;
@@ -365,7 +381,8 @@ begin
     if v_rosnie then
         v_liczba := v_liczba + zapisz_drobny_okres(
             p_device_id, p_device_id_odn, v_od - p_okno,
-            v_start_ms, v_start_t, v_max_ms, v_max_t, true, p_drobne_przyrost
+            v_start_ms, v_start_t, v_max_ms, v_max_t, true, p_drobne_przyrost,
+            p_drobne_udzial_odn
         );
     end if;
 
@@ -396,11 +413,11 @@ revoke execute on function public.zapisz_okres_grzania(
 ) from public, anon, authenticated;
 
 revoke execute on function public.zapisz_drobny_okres(
-    text, text, timestamptz, bigint, numeric, bigint, numeric, boolean, numeric
+    text, text, timestamptz, bigint, numeric, bigint, numeric, boolean, numeric, numeric
 ) from public, anon, authenticated;
 
 revoke execute on function public.wykryj_okresy_grzania(
-    text, text, timestamptz, timestamptz, interval, numeric, numeric, numeric, numeric, numeric
+    text, text, timestamptz, timestamptz, interval, numeric, numeric, numeric, numeric, numeric, numeric
 ) from public, anon, authenticated;
 
 grant execute on function public.ostatnia_temperatura(text, bigint) to service_role;
@@ -410,9 +427,9 @@ grant execute on function public.zapisz_okres_grzania(
 ) to service_role;
 
 grant execute on function public.zapisz_drobny_okres(
-    text, text, timestamptz, bigint, numeric, bigint, numeric, boolean, numeric
+    text, text, timestamptz, bigint, numeric, bigint, numeric, boolean, numeric, numeric
 ) to service_role;
 
 grant execute on function public.wykryj_okresy_grzania(
-    text, text, timestamptz, timestamptz, interval, numeric, numeric, numeric, numeric, numeric
+    text, text, timestamptz, timestamptz, interval, numeric, numeric, numeric, numeric, numeric, numeric
 ) to service_role;
