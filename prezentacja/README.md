@@ -71,6 +71,21 @@ Okresy grzania są zaznaczone na wszystkich poza wykresem Jasionki.
 ./.venv/bin/python3 prezentacja/app_echarts.py
 ```
 
+## `app_gaz.py` — szacowanie zużycia gazu (port 5003)
+
+Szacuje, ile m³ gazu poszło na ogrzewanie w wybranym zakresie dat, z okresów grzania
+(`heating_periods`). Mnożniki dopasowuje do **czystych pomiarów** z licznika gazu wpisywanych
+w aplikacji (tabela `gas_calibration`). Model i jego uzasadnienie: `zuzycie_gazu/SPECYFIKACJA.md`.
+
+- Wymaga jednorazowego uruchomienia `analityka/003_gas_usage.sql` w Supabase SQL Editor.
+- Zapisuje pomiary, więc potrzebuje `SUPABASE_SERVICE_ROLE_KEY` w `prezentacja/.env`
+  (działa tylko lokalnie). Opcjonalnie `GAZ_KWH_NA_M3` (domyślnie 11.1) i `GAZ_CENA_ZL_M3`.
+- Działa pod adresem `http://127.0.0.1:5003`.
+
+```bash
+./.venv/bin/python3 prezentacja/app_gaz.py
+```
+
 ## `streamlit_app.py` — wykresy ECharts w Streamlit (Streamlit Community Cloud)
 
 Te same cztery wykresy co `app_echarts.py` (wspólny kod wykresów i danych), ale jako aplikacja Streamlit.

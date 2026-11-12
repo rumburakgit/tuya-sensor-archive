@@ -39,6 +39,11 @@ PREZENTACJE = [
         "skrypt": "app_echarts.py",
         "port": 5002,
     },
+    {
+        "nazwa": "Zużycie gazu",
+        "skrypt": "app_gaz.py",
+        "port": 5003,
+    },
 ]
 
 ODSWIEZANIE_MS = 100
