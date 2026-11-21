@@ -24,6 +24,7 @@ SKRYPTY=(
     prezentacja/app_archive.py
     prezentacja/app_echarts.py
     prezentacja/app_gaz.py
+    prezentacja/app_wykluczenia.py
 )
 
 ARGUMENTY=()
@@ -32,7 +33,7 @@ for skrypt in "${SKRYPTY[@]}"; do
 done
 
 # Moduły z panel.py (dwa pliki o tej samej nazwie, więc wypisane ręcznie).
-for modul in archive archive_metar przelicz_srednie czujniki app_archive app_echarts app_gaz \
+for modul in archive archive_metar przelicz_srednie czujniki app_archive app_echarts app_gaz app_wykluczenia \
         tkinter.messagebox tkinter.scrolledtext tkinter.ttk \
         queue socket threading webbrowser; do
     ARGUMENTY+=(--hidden-import "$modul")

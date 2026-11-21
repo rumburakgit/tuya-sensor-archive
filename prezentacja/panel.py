@@ -44,6 +44,11 @@ PREZENTACJE = [
         "skrypt": "app_gaz.py",
         "port": 5003,
     },
+    {
+        "nazwa": "Wykluczenia odczytów",
+        "skrypt": "app_wykluczenia.py",
+        "port": 5004,
+    },
 ]
 
 ODSWIEZANIE_MS = 100

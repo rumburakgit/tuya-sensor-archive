@@ -2,7 +2,8 @@
 -- Warstwa analityczna: tabele i funkcje średnich
 -- ==================================================
 --
--- Wdrożenie: wkleić całość w Supabase -> SQL Editor i uruchomić.
+-- Wdrożenie: wkleić całość w Supabase -> SQL Editor i uruchomić
+-- (po 000_sensor_exclusions.sql i 002_heating_periods.sql).
 -- Skrypt można uruchamiać wielokrotnie (create ... if not exists,
 -- create or replace, on conflict do nothing).
 --
@@ -100,7 +101,7 @@ granice as (
         case when min(measured_at) is not null
              then greatest(p_od, min(measured_at)) end as od,
         least(p_do, max(measured_at) + p_waznosc) as do_
-    from sensor_readings
+    from sensor_readings_czyste
     where device_id = any(p_device_ids)
       and code = p_code
 ),
@@ -136,7 +137,7 @@ odczyty as (
         ) as do_,
         value::float8 as v,
         unit
-    from sensor_readings
+    from sensor_readings_czyste
     where device_id = any(p_device_ids)
       and code = p_code
       and measured_at >= (select min(poczatek) from okresy) - p_waznosc
@@ -396,7 +397,9 @@ $$;
 -- więc nadajemy je jawnie. service_role omija RLS, ale nie GRANT-y.
 
 grant select on public.sensor_groups to service_role;
-grant select, insert, update on public.sensor_aggregates to service_role;
+-- delete: wyzwalacz na sensor_exclusions (000_sensor_exclusions.sql)
+-- usuwa średnie z przeliczanego zakresu.
+grant select, insert, update, delete on public.sensor_aggregates to service_role;
 
 -- Funkcje zapisują dane, więc wywołuje je tylko service_role
 -- (warstwa pobierania), a nie anon/authenticated przez API.

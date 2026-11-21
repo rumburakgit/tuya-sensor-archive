@@ -3,7 +3,8 @@
 -- ==================================================
 --
 -- Wdrożenie: wkleić całość w Supabase -> SQL Editor i uruchomić
--- (po 002_heating_periods.sql i 001_sensor_aggregates.sql). Skrypt
+-- (po 000_sensor_exclusions.sql, 002_heating_periods.sql
+-- i 001_sensor_aggregates.sql). Skrypt
 -- można uruchamiać wielokrotnie (create ... if not exists,
 -- create or replace).
 --
@@ -135,7 +136,7 @@ odczyty as (
         r.event_time_ms as t,
         greatest(0, r.value - kuch.wartosc - k.roznica0) as x
     from kandydaci k
-    join sensor_readings r
+    join sensor_readings_czyste r
       on r.device_id = k.device_id
      and r.code = 'va_temperature'
      and r.event_time_ms >= k.start_ms
@@ -152,7 +153,7 @@ konce as (
               and o.x <= p_prog_konca
         ) as koniec_ms,
         exists (
-            select 1 from sensor_readings r
+            select 1 from sensor_readings_czyste r
             where r.device_id = k.device_id
               and r.code = 'va_temperature'
               and r.event_time_ms >= k.granica_ms

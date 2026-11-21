@@ -2,7 +2,8 @@
 -- Warstwa analityczna: okresy grzania grzejnika
 -- ==================================================
 --
--- Wdrożenie: wkleić całość w Supabase -> SQL Editor i uruchomić,
+-- Wdrożenie: wkleić całość w Supabase -> SQL Editor i uruchomić
+-- (po 000_sensor_exclusions.sql),
 -- a potem (ponownie) 001_sensor_aggregates.sql — jego przelicz_srednie()
 -- wywołuje wykryj_okresy_grzania(). Oba skrypty można uruchamiać
 -- wielokrotnie (create ... if not exists, create or replace).
@@ -63,7 +64,7 @@ stable
 set search_path = public
 as $$
 select r.event_time_ms, r.value
-from sensor_readings r
+from sensor_readings_czyste r
 where r.device_id = p_device_id
   and r.code = 'va_temperature'
   and r.event_time_ms <= p_ms
@@ -263,7 +264,7 @@ begin
             g0.wartosc as tg0,
             k.wartosc as tk,
             k0.wartosc as tk0
-        from sensor_readings g
+        from sensor_readings_czyste g
         cross join lateral ostatnia_temperatura(p_device_id, g.event_time_ms - v_okno_ms) g0
         cross join lateral ostatnia_temperatura(p_device_id_odn, g.event_time_ms) k
         cross join lateral ostatnia_temperatura(p_device_id_odn, g0.event_time_ms) k0
@@ -290,7 +291,7 @@ begin
                 -- Początek: najniższy (ostatni z równych) odczyt w oknie.
                 select s.event_time_ms, s.value
                 into v_start_ms, v_start_t
-                from sensor_readings s
+                from sensor_readings_czyste s
                 where s.device_id = p_device_id
                   and s.code = 'va_temperature'
                   and s.event_time_ms between r.t0 and r.t
@@ -336,7 +337,7 @@ begin
 
     for r in
         select g.event_time_ms as t, g.value as tg
-        from sensor_readings g
+        from sensor_readings_czyste g
         where g.device_id = p_device_id
           and g.code = 'va_temperature'
           and g.measured_at >= v_od

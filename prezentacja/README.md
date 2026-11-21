@@ -86,6 +86,26 @@ w aplikacji (tabela `gas_calibration`). Model i jego uzasadnienie: `zuzycie_gazu
 ./.venv/bin/python3 prezentacja/app_gaz.py
 ```
 
+## `app_wykluczenia.py` — wykluczanie błędnych odczytów (port 5004)
+
+Okresy, z których odczyty danego czujnika mają być pomijane (np. bzdury przy słabej baterii).
+Wpisy trafiają do tabeli `sensor_exclusions`; wszystkie wykresy, średnie, okresy grzania i szacowanie gazu
+czytają odczyty z widoku `sensor_readings_czyste`, który je pomija. Surowe dane w `sensor_readings`
+zostają nietknięte. Opis: `wykluczenia/SPECYFIKACJA.md`.
+
+- Wykres surowych odczytów wybranego czujnika (wykluczone — szare punkty i pasy); przeciągnięcie myszą
+  po wykresie wypełnia pola od/do, a pod formularzem widać, ile odczytów zostanie wykluczonych.
+- Wykluczenie obejmuje temperaturę i wilgotność albo tylko jedną z nich; można je wyłączyć albo usunąć.
+- Po każdej zmianie wyzwalacz w bazie przelicza średnie i okresy grzania w zakresie wykluczenia (± 2 dni).
+- Wymaga jednorazowego uruchomienia `analityka/000_sensor_exclusions.sql` (i ponownie 002, 001, 003)
+  w Supabase SQL Editor.
+- Zapisuje wykluczenia, więc potrzebuje `SUPABASE_SERVICE_ROLE_KEY` (działa tylko lokalnie).
+- Działa pod adresem `http://127.0.0.1:5004`.
+
+```bash
+./.venv/bin/python3 prezentacja/app_wykluczenia.py
+```
+
 ## `streamlit_app.py` — wykresy ECharts w Streamlit (Streamlit Community Cloud)
 
 Te same cztery wykresy co `app_echarts.py` (wspólny kod wykresów i danych), ale jako aplikacja Streamlit.

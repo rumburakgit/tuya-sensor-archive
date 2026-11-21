@@ -2,12 +2,16 @@
 
 Średnie liczone są **w bazie** (funkcje SQL w Supabase) i zapisywane w tabeli
 `sensor_aggregates`, a wykryte okresy grzania — w tabeli `heating_periods`.
-Surowe pomiary w `sensor_readings` pozostają bez zmian.
+Surowe pomiary w `sensor_readings` pozostają bez zmian. Obliczenia czytają je przez widok
+`sensor_readings_czyste`, który pomija odczyty z okresów wykluczonych w tabeli `sensor_exclusions`
+(błędne odczyty, np. przy słabej baterii; wpisywane w `prezentacja/app_wykluczenia.py`,
+opis: `wykluczenia/SPECYFIKACJA.md`).
 
 ## Wdrożenie
 
-Zawartość `002_heating_periods.sql`, a potem `001_sensor_aggregates.sql` wkleić w Supabase → SQL Editor
-i uruchomić (`przelicz_srednie()` z 001 wywołuje funkcję wykrywania z 002).
+Zawartość `000_sensor_exclusions.sql`, `002_heating_periods.sql`, `001_sensor_aggregates.sql`
+i `003_gas_usage.sql` — w tej kolejności — wkleić w Supabase → SQL Editor i uruchomić
+(funkcje z 001–003 czytają widok z 000; `przelicz_srednie()` z 001 wywołuje funkcję wykrywania z 002).
 Skrypty można bezpiecznie uruchamiać wielokrotnie (np. po zmianie definicji funkcji).
 Pierwsze wypełnienie tabeli: przycisk **Przelicz średnie** w `pobieranie/panel.py`.
 
@@ -126,7 +130,9 @@ Przeliczanie należy do warstwy pobierania (prezentacja tylko czyta):
 - po każdej archiwizacji z `pobieranie/panel.py` automatycznie uruchamia się
   `przelicz_srednie.py --nowe-od <start archiwizacji>` — przelicza okresy od najstarszego
   nowo wstawionego pomiaru (i zawsze co najmniej ostatnią dobę, na wypadek korekt METAR COR);
-- przycisk **Przelicz średnie** przelicza całą historię.
+- przycisk **Przelicz średnie** przelicza całą historię;
+- dodanie, zmiana albo usunięcie wykluczenia (`sensor_exclusions`) — wyzwalacz w bazie usuwa średnie
+  z pełnych dób okresu wykluczenia ± 2 dni i przelicza je razem z okresami grzania (`przelicz_srednie(od, do)`).
 
 Funkcje mogą wywoływać tylko `service_role` (uprawnienia odebrane `anon`/`authenticated`).
 Skrypt nadaje też jawnie uprawnienia do tabel (`GRANT`) dla `service_role` — w tym projekcie nowe tabele

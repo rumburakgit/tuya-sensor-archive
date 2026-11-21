@@ -35,6 +35,10 @@ HISTORIA_GODZINY = 48
 PROG_BRAKU_DANYCH_MIN = 10
 PAGE_SIZE = 1000
 
+# Odczyty bez wykluczonych (widok z analityka/000_sensor_exclusions.sql);
+# surowe odczyty pokazuje tylko prezentacja/app_wykluczenia.py.
+TABELA_ODCZYTOW = "sensor_readings_czyste"
+
 DEVICES = [
     ("Temp Kuchnias", "bf09f3b9302d16a74froza"),
     ("Temp Grzejnik", "bf333171b6295a9253wx0y"),
@@ -729,7 +733,7 @@ def pobierz_wszystkie_pomiary(poczatek_iso=None, koniec_iso=None):
 
     while True:
         zapytanie = (
-            supabase.table("sensor_readings")
+            supabase.table(TABELA_ODCZYTOW)
             .select(
                 "device_id,device_name,event_time_ms,"
                 "measured_at,code,value,unit"
