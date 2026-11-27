@@ -73,8 +73,8 @@ Okresy grzania są zaznaczone na wszystkich poza wykresem Jasionki.
 
 ## `app_gaz.py` — szacowanie zużycia gazu (port 5003)
 
-Szacuje, ile m³ gazu poszło na ogrzewanie w wybranym zakresie dat, z okresów grzania
-(`heating_periods`). Mnożniki dopasowuje do **czystych pomiarów** z licznika gazu wpisywanych
+Szacuje, ile m³ gazu poszło na ogrzewanie w wybranym zakresie dat, z pracy grzejnika
+(różnica „Temp Grzejnik” − „Temp Kuchnias”, pracuje od 0,2 °C). Mnożniki dopasowuje do **czystych pomiarów** z licznika gazu wpisywanych
 w aplikacji (tabela `gas_calibration`). Model i jego uzasadnienie: `zuzycie_gazu/SPECYFIKACJA.md`.
 
 - Wymaga jednorazowego uruchomienia `analityka/003_gas_usage.sql` w Supabase SQL Editor.

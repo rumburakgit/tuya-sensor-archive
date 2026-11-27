@@ -1,9 +1,9 @@
 """
-Szacowanie zużycia gazu na ogrzewanie z okresów grzania (port 5003).
+Szacowanie zużycia gazu na ogrzewanie z pracy grzejnika (port 5003).
 
-Cechy okresów (pole pod krzywą nadwyżki temperatury grzejnika, wzrost
-temperatury mieszkania) liczy Postgres: cechy_okresow_grzania()
-z analityka/003_gas_usage.sql. Aplikacja dopasowuje do czystych pomiarów
+Cechy liczy Postgres (analityka/003_gas_usage.sql): pole pod krzywą
+pracy grzejnika — praca_grzejnika(); wzrost temperatury mieszkania
+w okresach grzania — cechy_okresow_grzania(). Aplikacja dopasowuje do czystych pomiarów
 z tabeli gas_calibration mnożniki kilku modeli i szacuje zużycie
 w wybranym zakresie dat. Opis modelu: zuzycie_gazu/SPECYFIKACJA.md.
 
@@ -47,25 +47,27 @@ CENA_ZL_M3 = (
     float(os.environ["GAZ_CENA_ZL_M3"]) if os.environ.get("GAZ_CENA_ZL_M3") else None
 )
 
+# Cechy z praca_grzejnika() (dla całego zakresu).
+CECHY_PRACY = ["pole", "czas_pracy_h"]
 # Cechy z cechy_okresow_grzania() sumowane po okresach zakresu.
-CECHY = ["pole", "wzrost_mieszkania", "czas_h", "skok"]
+CECHY_OKRESOW = ["wzrost_mieszkania", "czas_h", "skok"]
 
 # Modele: m³ = Σ współczynnik · Σ cecha. Pierwszy dopasowany z listy
 # jest modelem domyślnym.
 MODELE = [
     {
-        "kod": "C",
-        "wzor": "k · Σ pole + c · Σ wzrost mieszkania",
-        "cechy": ["pole", "wzrost_mieszkania"],
-        "symbole": ["k", "c"],
-        "jednostki": ["m³/°C·h", "m³/°C"],
-    },
-    {
         "kod": "A",
-        "wzor": "k · Σ pole",
+        "wzor": "k · pole",
         "cechy": ["pole"],
         "symbole": ["k"],
         "jednostki": ["m³/°C·h"],
+    },
+    {
+        "kod": "C",
+        "wzor": "k · pole + c · Σ wzrost mieszkania",
+        "cechy": ["pole", "wzrost_mieszkania"],
+        "symbole": ["k", "c"],
+        "jednostki": ["m³/°C·h", "m³/°C"],
     },
     {
         "kod": "B",
@@ -115,45 +117,36 @@ def filtr_liczba(x, miejsca=2):
 # --------------------------------------------------
 
 def cechy_zakresu(od, do):
-    """Okresy grzania w zakresie [od, do) z cechami, sumy i ostrzeżenia."""
-    wiersze = (
-        supabase.rpc(
-            "cechy_okresow_grzania",
-            {"p_od": od.isoformat(), "p_do": do.isoformat()},
-        )
-        .execute()
-        .data
-        or []
-    )
+    """Cechy pracy grzejnika i okresy grzania w zakresie [od, do), sumy i ostrzeżenia."""
+    zakres = {"p_od": od.isoformat(), "p_do": do.isoformat()}
+    praca = (supabase.rpc("praca_grzejnika", zakres).execute().data or [{}])[0]
+    wiersze = supabase.rpc("cechy_okresow_grzania", zakres).execute().data or []
 
     okresy = []
     for w in wiersze:
-        okres = {k: w[k] for k in ("rodzaj", "trwa", "garb_trwa")}
-        for k in ("poczatek", "szczyt", "koniec_garbu", "czesc_od", "czesc_do"):
+        okres = {k: w[k] for k in ("rodzaj", "trwa")}
+        for k in ("poczatek", "szczyt", "czesc_od", "czesc_do"):
             okres[k] = z_bazy(w[k])
-        for k in CECHY:
+        for k in CECHY_OKRESOW:
             okres[k] = float(w[k])
-        okres["przed_od"] = okres["poczatek"] < okres["czesc_od"]
-        okres["po_do"] = okres["garb_trwa"] or okres["koniec_garbu"] > okres["czesc_do"]
+        okres["czesciowo"] = (
+            okres["poczatek"] < okres["czesc_od"] or okres["szczyt"] > okres["czesc_do"]
+        )
         okresy.append(okres)
 
-    sumy = {k: sum(o[k] for o in okresy) for k in CECHY}
+    sumy = {k: float(praca.get(k) or 0) for k in CECHY_PRACY}
+    sumy.update({k: sum(o[k] for o in okresy) for k in CECHY_OKRESOW})
 
     ostrzezenia = []
-    if any(o["przed_od"] for o in okresy):
+    if praca.get("pracuje_na_koncu"):
         ostrzezenia.append(
-            "Garb okresu grzania zaczął się przed początkiem zakresu — "
-            "liczona jest tylko jego część w zakresie."
+            "Grzejnik pracuje w ostatnim odczycie "
+            f"({filtr_czas(praca['ostatni_odczyt'])}) — wynik może jeszcze wzrosnąć."
         )
-    if any(o["po_do"] and not o["garb_trwa"] for o in okresy):
+    if any(o["czesciowo"] for o in okresy):
         ostrzezenia.append(
-            "Garb okresu grzania trwa jeszcze po końcu zakresu — "
-            "liczona jest tylko jego część w zakresie."
-        )
-    if any(o["garb_trwa"] for o in okresy):
-        ostrzezenia.append(
-            "Ostatni okres grzania jeszcze trwa (brak nowszych danych) — "
-            "wynik może wzrosnąć."
+            "Rozgrzewanie w okresie grzania wychodzi poza zakres — wzrost mieszkania "
+            "liczony jest tylko w części w zakresie (pole jest liczone dokładnie)."
         )
 
     return okresy, sumy, ostrzezenia
@@ -264,7 +257,7 @@ def ocen_modele(pomiary):
 
         wynik["wspolczynniki"] = dopasuj(model, aktywne)
         if wynik["wspolczynniki"] is None:
-            wynik["powod"] = "brak okresów grzania w pomiarach"
+            wynik["powod"] = "grzejnik nie pracował w pomiarach"
             continue
 
         # Pomiar przewidywany z modelu dopasowanego do pozostałych.
@@ -351,7 +344,7 @@ tr.wylaczony td { opacity: .45; }
 <main>
 <h1>Zużycie gazu na ogrzewanie</h1>
 <div class="podtytul">
-  Szacunek z okresów grzania (czujnik „Temp Grzejnik”), mnożniki dopasowane do czystych pomiarów z licznika.
+  Szacunek z pracy grzejnika (czujniki „Temp Grzejnik” i „Temp Kuchnias”), mnożniki dopasowane do czystych pomiarów z licznika.
 </div>
 
 {% for kategoria, tekst in get_flashed_messages(with_categories=true) %}
@@ -387,8 +380,9 @@ tr.wylaczony td { opacity: .45; }
     {% endif %}
 
     <p class="slaby">
+      Grzejnik pracował {{ szacunek.sumy.czas_pracy_h | liczba(1) }} h ·
+      pole {{ szacunek.sumy.pole | liczba(1) }} °C·h ·
       {{ szacunek.okresy | length }} okresów grzania ·
-      Σ pole {{ szacunek.sumy.pole | liczba(1) }} °C·h ·
       Σ wzrost mieszkania {{ szacunek.sumy.wzrost_mieszkania | liczba(2) }} °C ·
       Σ czas {{ szacunek.sumy.czas_h | liczba(1) }} h ·
       Σ skok {{ szacunek.sumy.skok | liczba(1) }} °C
@@ -397,21 +391,19 @@ tr.wylaczony td { opacity: .45; }
     {% if szacunek.okresy %}
     <table>
       <tr>
-        <th>Początek</th><th>Szczyt</th><th>Koniec garbu</th><th>Rodzaj</th>
+        <th>Początek</th><th>Szczyt</th><th>Rodzaj</th>
         <th class="l">Czas [h]</th><th class="l">Skok [°C]</th>
-        <th class="l">Pole [°C·h]</th><th class="l">Wzrost mieszk. [°C]</th><th></th>
+        <th class="l">Wzrost mieszk. [°C]</th><th></th>
       </tr>
       {% for o in szacunek.okresy %}
       <tr>
         <td>{{ o.poczatek | czas }}</td>
         <td>{{ o.szczyt | czas }}</td>
-        <td>{{ o.koniec_garbu | czas }}{% if o.garb_trwa %} (trwa){% endif %}</td>
-        <td>{{ o.rodzaj }}</td>
+        <td>{{ o.rodzaj }}{% if o.trwa %} (trwa){% endif %}</td>
         <td class="l">{{ o.czas_h | liczba(2) }}</td>
         <td class="l">{{ o.skok | liczba(1) }}</td>
-        <td class="l">{{ o.pole | liczba(2) }}</td>
         <td class="l">{{ o.wzrost_mieszkania | liczba(2) }}</td>
-        <td>{% if o.przed_od or o.po_do %}<span class="znacznik">część w zakresie</span>{% endif %}</td>
+        <td>{% if o.czesciowo %}<span class="znacznik">część w zakresie</span>{% endif %}</td>
       </tr>
       {% endfor %}
     </table>
@@ -441,7 +433,9 @@ tr.wylaczony td { opacity: .45; }
     {% endfor %}
   </table>
   <p class="slaby">
-    Pole = ∫ nadwyżki różnicy grzejnik − kuchnia ponad różnicę z początku okresu.
+    Grzejnik pracuje, gdy różnica grzejnik − kuchnia wynosi co najmniej 0,2 °C
+    (przy wyłączonym kotle ok. −0,7 °C, bo grzejnik wisi przy zimnej ścianie).
+    Pole = ∫ (grzejnik − kuchnia + 0,7 °C) dt po czasie pracy grzejnika, bez limitu czasu.
     Wzrost mieszkania = o ile podniosła się średnia temperatura mieszkania od początku okresu do szczytu
     (energia na nagrzanie domu, np. przy przygotowaniu na przyjazd).
   </p>
@@ -451,7 +445,7 @@ tr.wylaczony td { opacity: .45; }
   <h2>Czyste pomiary (kalibracja)</h2>
   <p class="slaby">
     Zakresy, w których gaz szedł wyłącznie na ogrzewanie (bez gotowania, kąpieli, pieca węglowego).
-    Granice najlepiej ustawiać, gdy grzejnik nie grzeje. Wpisz zużycie albo oba stany licznika.
+    Granice mogą wypadać w dowolnej chwili, także w trakcie grzania. Wpisz zużycie albo oba stany licznika.
   </p>
   <form class="wiersz" method="post" action="{{ url_for('dodaj_pomiar', od=od_formularz, do=do_formularz) }}">
     <label>Od <input type="datetime-local" name="poczatek" required></label>
@@ -467,7 +461,7 @@ tr.wylaczony td { opacity: .45; }
   <table style="margin-top: 14px">
     <tr>
       <th>Od</th><th>Do</th><th class="l">Zużycie [m³]</th><th class="l">Okresy</th>
-      <th class="l">Σ pole</th><th class="l">Σ wzrost</th>
+      <th class="l">Praca [h]</th><th class="l">Pole</th><th class="l">Σ wzrost</th>
       {% if domyslny %}<th class="l">Model {{ domyslny.kod }} [m³]</th><th class="l">Różnica</th>{% endif %}
       <th>Notatka</th><th></th>
     </tr>
@@ -477,6 +471,7 @@ tr.wylaczony td { opacity: .45; }
       <td>{{ p.koniec | czas }}</td>
       <td class="l">{{ p.zuzycie | liczba(3) }}</td>
       <td class="l">{{ p.liczba_okresow }}</td>
+      <td class="l">{{ p.sumy.czas_pracy_h | liczba(1) }}</td>
       <td class="l">{{ p.sumy.pole | liczba(1) }}</td>
       <td class="l">{{ p.sumy.wzrost_mieszkania | liczba(2) }}</td>
       {% if domyslny %}

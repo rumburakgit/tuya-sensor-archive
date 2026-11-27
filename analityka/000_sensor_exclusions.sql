@@ -61,8 +61,8 @@ where not exists (
 --
 -- Po dodaniu, zmianie albo usunięciu wykluczenia przelicza średnie
 -- i okresy grzania w zakresie: pełne doby (Europe/Warsaw) okresu
--- wykluczenia z zapasem 2 dni z każdej strony (garb okresu grzania
--- trwa do 48 h). Średnie z zakresu są najpierw usuwane — gdy
+-- wykluczenia z zapasem 2 dni z każdej strony (okres grzania może
+-- zaczynać się przed wykluczeniem). Średnie z zakresu są najpierw usuwane — gdy
 -- wykluczenie obejmie ostatnie odczyty, okresy bez danych nie powstaną
 -- od nowa, więc stare wartości nie mogą zostać.
 
