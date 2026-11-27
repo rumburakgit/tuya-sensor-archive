@@ -28,7 +28,7 @@ Małe okno (tkinter) z przyciskami:
 
 - **Archiwizuj Tuya** — uruchamia `archive.py`,
 - **Archiwizuj METAR** — uruchamia `archive_metar.py`,
-- **Przelicz średnie** — uruchamia `przelicz_srednie.py` (cała historia).
+- **Przelicz średnie** — uruchamia `przelicz_srednie.py` (cała historia, w kawałkach po 7 dni, żeby każde wywołanie zmieściło się w limicie czasu zapytania Supabase).
 
 Po każdej archiwizacji panel sam uruchamia `przelicz_srednie.py --nowe-od ...`,
 który przelicza średnie dla nowo pobranych danych (zob. `analityka/README.md`).
